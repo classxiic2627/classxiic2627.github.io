@@ -205,15 +205,15 @@ const studentProfiles = {
   },
   "Saksham": {
     caption: "Jordan",
-    quote: ".",
+    quote: "Kuchh nahi hai yrr, aage badho... :)",
     traits: "Cricket, Helpful",
     bio: "Sleepy guy. Always late for school. Yet... helpful. Kabhi madad karne se mana nahi karta."
   },
   "Samriddhi": {
     caption: "The Supportive Topper",
-    quote: "",
-    traits: "",
-    bio: ""
+    quote: "There are two kinds of people, those who do the work and those who take the credit. Try to be in the first group; there is less competition there.",
+    traits: "Hardworking, Self obsessed, Confident",
+    bio: "A calm and sensible girl who is helpful towards her friends and have a good balance between studies and other activities."
   },
   "Shailee": {
     caption: "Slow and steady :-)",
