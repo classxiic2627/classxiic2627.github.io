@@ -1,54 +1,538 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Class Gallery: XII C</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10101a">
+
+  <title>Class Gallery — XII-C | The Archive</title>
+  <meta name="description" content="Photographs, memories, and moments from our class.">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+
+  <style>
+    /* Gallery-specific styles */
+    .gallery-page {
+      width: min(1180px, 90%);
+      margin: 0 auto;
+      padding: 55px 0 80px;
+    }
+
+    .gallery-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 45px;
+    }
+
+    .gallery-back {
+      color: var(--purple, #b49aff);
+      text-decoration: none;
+      font-size: 13px;
+    }
+
+    .gallery-heading {
+      margin-bottom: 32px;
+    }
+
+    .gallery-heading h1 {
+      margin: 12px 0;
+      font: 700 clamp(36px, 6vw, 64px)/1.1 "Space Grotesk", sans-serif;
+      letter-spacing: -2px;
+    }
+
+    .gallery-heading h1 span {
+      color: var(--purple, #b49aff);
+    }
+
+    .gallery-heading p {
+      max-width: 620px;
+      color: var(--muted, #aaa5b8);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .gallery-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin: 28px 0 20px;
+      color: var(--muted, #aaa5b8);
+      font-size: 12px;
+    }
+
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .gallery-card {
+      min-width: 0;
+      padding: 0;
+      overflow: hidden;
+      text-align: left;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      border: 1px solid var(--line, #302b40);
+      border-radius: 16px;
+      background: var(--surface, #191824);
+      transition: transform .2s ease, border-color .2s ease;
+    }
+
+    .gallery-card:hover {
+      transform: translateY(-4px);
+      border-color: #8c73c7;
+    }
+
+    .gallery-card-image {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+      background: linear-gradient(135deg, #49396e, #242034);
+    }
+
+    .gallery-card-image img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform .35s ease;
+    }
+
+    .gallery-card:hover .gallery-card-image img {
+      transform: scale(1.04);
+    }
+
+    .gallery-card-placeholder {
+      color: #e6dcff;
+      font-size: 44px;
+    }
+
+    .gallery-card-info {
+      padding: 17px;
+    }
+
+    .gallery-card-category {
+      color: var(--purple, #b49aff);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    .gallery-card-info h2 {
+      margin: 9px 0 7px;
+      font: 600 19px/1.35 "Space Grotesk", sans-serif;
+      overflow-wrap: anywhere;
+    }
+
+    .gallery-card-info p {
+      margin: 0;
+      color: var(--muted, #aaa5b8);
+      font-size: 12px;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+    }
+
+    .gallery-empty {
+      grid-column: 1 / -1;
+      padding: 45px 20px;
+      text-align: center;
+      color: var(--muted, #aaa5b8);
+      border: 1px dashed var(--line, #302b40);
+      border-radius: 16px;
+    }
+
+    .gallery-dialog {
+      width: min(900px, 92%);
+      max-width: none;
+      max-height: 90vh;
+      padding: 0;
+      overflow: auto;
+      color: #f5f2ff;
+      border: 1px solid #403650;
+      border-radius: 18px;
+      background: #15141f;
+    }
+
+    .gallery-dialog::backdrop {
+      background: rgba(5, 4, 12, .85);
+      backdrop-filter: blur(5px);
+    }
+
+    .dialog-image-wrap {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: 180px;
+      background: #0d0c14;
+    }
+
+    .dialog-image {
+      display: block;
+      width: 100%;
+      max-height: 65vh;
+      object-fit: contain;
+    }
+
+    .dialog-close {
+      position: absolute;
+      z-index: 2;
+      top: 12px;
+      right: 12px;
+      width: 40px;
+      height: 40px;
+      border: 1px solid #ffffff40;
+      border-radius: 50%;
+      color: white;
+      background: #111111bb;
+      font-size: 25px;
+      cursor: pointer;
+    }
+
+    .dialog-copy {
+      padding: 23px;
+    }
+
+    .dialog-copy h2 {
+      margin: 9px 0;
+      font: 600 26px "Space Grotesk", sans-serif;
+    }
+
+    .dialog-copy p {
+      color: #b9b2cb;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .gallery-footer {
+      margin-top: 25px;
+      color: var(--muted, #aaa5b8);
+      font-size: 11px;
+      line-height: 1.8;
+    }
+
+    @media (max-width: 800px) {
+      .gallery-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 520px) {
+      .gallery-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .gallery-page {
+        width: 92%;
+        padding-top: 30px;
+      }
+
+      .gallery-topbar {
+        margin-bottom: 32px;
+      }
+
+      .gallery-card-image {
+        aspect-ratio: 5 / 3;
+      }
+    }
+  </style>
 </head>
+
 <body>
-    <section class="gallery-section" id="gallery">
-      <div class="section-wrap section-block">
-        <div class="section-heading">
-          <div>
-            <div class="eyebrow">PROOF THAT IT HAPPENED</div>
-            <h2>The memory <span>vault.</span></h2>
-            <p>Little moments. Big stories. Photos that explain absolutely nothing out of context.</p>
-          </div><a class="text-link" href="#gallery-grid">Explore the gallery <span>↗</span></a>
-        </div>
-        <div class="gallery-grid" id="gallery-grid">
-          <button class="gallery-item gallery-large" data-title="The usual suspects"
-            data-caption="A placeholder for your best group photo.">
-            <div class="gallery-placeholder gp-purple"><span class="gallery-symbol">✳</span><span
-                class="gallery-label">GROUP PHOTO</span><strong>The usual<br>suspects.</strong></div><span
-              class="gallery-meta"><span>01 / CLASS MOMENTS</span><b>↗</b></span>
-          </button>
-          <button class="gallery-item" data-title="Somewhere between classes"
-            data-caption="Add a candid photo and the story behind it.">
-            <div class="gallery-placeholder gp-orange"><span class="gallery-symbol">✦</span><span
-                class="gallery-label">CANDID CHAOS</span><strong>Somewhere<br>between classes.</strong></div><span
-              class="gallery-meta"><span>02 / CANDIDS</span><b>↗</b></span>
-          </button>
-          <button class="gallery-item" data-title="Core memory"
-            data-caption="A school event, trip, celebration, or tiny moment.">
-            <div class="gallery-placeholder gp-blue"><span class="gallery-symbol">★</span><span
-                class="gallery-label">CORE MEMORY</span><strong>We had to<br>be there.</strong></div><span
-              class="gallery-meta"><span>03 / THE GOOD DAYS</span><b>↗</b></span>
-          </button>
-        </div>
-        <p class="gallery-note"><span>✳</span> These are designed placeholders. Add your own class photos in
-          <code>script.js</code> when you're ready.
-        </p>
-      </div>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <main class="gallery-page">
+
+    <div class="gallery-topbar">
+      <a class="brand" href="index.html" aria-label="Return to The Archive home">
+        <span class="brand-mark">A</span>
+        <span>THE <b>ARCHIVE</b></span>
+      </a>
+
+      <a class="gallery-back" href="index.html">← Back to home</a>
+    </div>
+
+    <header class="gallery-heading">
+      <div class="eyebrow">PROOF THAT IT HAPPENED</div>
+      <h1>The memory <span>vault.</span></h1>
+      <p>
+        Little moments. Big stories. Photos that explain absolutely
+        nothing out of context.
+      </p>
+    </header>
+
+    <div class="gallery-toolbar">
+      <span id="galleryCount">Loading memories...</span>
+      <span>✳ XII-C ARCHIVE</span>
+    </div>
+
+    <section
+      class="gallery-grid"
+      id="galleryGrid"
+      aria-label="Class photographs and memories"
+    >
+      <p class="gallery-empty">Loading the gallery...</p>
     </section>
 
-    <dialog class="gallery-dialog" id="galleryDialog"><button class="dialog-close" id="dialogClose"
-      aria-label="Close gallery detail">×</button>
-    <div class="dialog-art" id="dialogArt">✳</div>
-    <div class="dialog-copy"><span class="eyebrow">MEMORY VAULT</span>
-      <h3 id="dialogTitle">The usual suspects</h3>
-      <p id="dialogCaption">A placeholder for your best group photo.</p>
+    <p class="gallery-footer">
+      ✳ To add more to the gallery, please contact the developer
+    </p>
+
+  </main>
+
+  <!-- Image preview dialog -->
+  <dialog class="gallery-dialog" id="galleryDialog">
+    <div class="dialog-image-wrap">
+      <button
+        class="dialog-close"
+        id="dialogClose"
+        type="button"
+        aria-label="Close image preview"
+      >×</button>
+
+      <img class="dialog-image" id="dialogImage" src="" alt="">
+    </div>
+
+    <div class="dialog-copy">
+      <div class="eyebrow" id="dialogCategory">MEMORY VAULT</div>
+      <h2 id="dialogTitle"></h2>
+      <p id="dialogCaption"></p>
     </div>
   </dialog>
+
+  <script>
+    /*
+    ============================================================
+    EASY GALLERY MANAGEMENT
+    ============================================================
+
+    To add a photo:
+    1. Put it in the images folder.
+    2. Add a new object to the galleryPhotos list below.
+    3. Save and refresh the page.
+
+    Use paths such as "images/group-photo.jpg".
+    To remove a photo, delete its object from the list.
+    The order in this list is the order shown on the website.
+    */
+
+    const galleryPhotos = [
+      {
+        image: "gallery/group.jpg",
+        title: "Class XI C",
+        category: "core memory",
+        caption: "The first ever group photo we had!"
+      },
+      {
+        image: "gallery/rrsirbday.jpeg",
+        title: "Rupesh Sir's Birthday (2025)",
+        category: "Memory",
+        caption: "A wonderful surprise to our wonder class teacher!"
+      },
+      {
+        image: "gallery/classsnap.jpeg",
+        title: "Somewhere between classes",
+        category: "Candid chaos",
+        caption: "Lovely memory taking a class snap!"
+      },
+      {
+        image: "gallery/aryangrp.jpg",
+        title: "Dance Group",
+        category: "Memory",
+        caption: "The process was the most fun thing!"
+      },
+      {
+        image: "gallery/assembly.jpg",
+        title: "Class Assembly",
+        category: "Candid chaos",
+        caption: "We might not remember the small things, but when they happened, they made turned us into what we are now!"
+      },
+      {
+        image: "gallery/g1.jpg",
+        title: "Teacher's Day!",
+        category: "class memories",
+        caption: "One of the best moments we had!"
+      },
+      {
+        image: "gallery/g2.jpg",
+        title: "Teacher's Day!",
+        category: "class memories",
+        caption: "One of the best moments we had!"
+      },
+      {
+        image: "gallery/g3.jpg",
+        title: "Teacher's Day!",
+        category: "class memories",
+        caption: "One of the best moments we had!"
+      },
+      {
+        image: "gallery/shortgrp.jpg",
+        title: "Some memorable day...",
+        category: "class memories",
+        caption: "Attendance turned into a memory"
+      },
+      {
+        image: "gallery/teachers.jpg",
+        title: "Teachers of XI C",
+        category: "class memories",
+        caption: "The people who taught us, and really built us into 'us'"
+      }
+      
+
+      /*
+      ADD MORE PHOTOS HERE.
+
+      Remember to put a comma after the previous object.
+
+      Example:
+
+      ,
+      {
+        image: "images/annual-day.jpg",
+        title: "Annual Day",
+        category: "School events",
+        caption: "A night we'll always remember."
+      }
+      */
+    ];
+
+    const galleryGrid = document.getElementById("galleryGrid");
+    const galleryCount = document.getElementById("galleryCount");
+    const galleryDialog = document.getElementById("galleryDialog");
+    const dialogImage = document.getElementById("dialogImage");
+    const dialogTitle = document.getElementById("dialogTitle");
+    const dialogCategory = document.getElementById("dialogCategory");
+    const dialogCaption = document.getElementById("dialogCaption");
+    const dialogClose = document.getElementById("dialogClose");
+
+    function createGalleryCard(photo, index) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "gallery-card";
+      button.setAttribute(
+        "aria-label",
+        "View photo: " + photo.title
+      );
+
+      const imageWrap = document.createElement("div");
+      imageWrap.className = "gallery-card-image";
+
+      const image = document.createElement("img");
+      image.src = photo.image;
+      image.alt = photo.title;
+      image.loading = "lazy";
+
+      image.onerror = function () {
+        image.remove();
+
+        const placeholder = document.createElement("span");
+        placeholder.className = "gallery-card-placeholder";
+        placeholder.textContent = "✳";
+        placeholder.setAttribute("aria-label", "Image unavailable");
+
+        imageWrap.appendChild(placeholder);
+      };
+
+      imageWrap.appendChild(image);
+
+      const info = document.createElement("div");
+      info.className = "gallery-card-info";
+
+      const category = document.createElement("span");
+      category.className = "gallery-card-category";
+      category.textContent = photo.category || "Class memories";
+
+      const title = document.createElement("h2");
+      title.textContent = photo.title;
+
+      const caption = document.createElement("p");
+      caption.textContent = photo.caption || "";
+
+      info.append(category, title, caption);
+      button.append(imageWrap, info);
+
+      button.addEventListener("click", function () {
+        openPhoto(photo);
+      });
+
+      return button;
+    }
+
+    function renderGallery() {
+      galleryGrid.replaceChildren();
+
+      galleryCount.textContent =
+        galleryPhotos.length + (galleryPhotos.length === 1
+          ? " memory"
+          : " memories");
+
+      if (galleryPhotos.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "gallery-empty";
+        empty.textContent =
+          "No photos have been added yet. Check back soon!";
+        galleryGrid.appendChild(empty);
+        return;
+      }
+
+      galleryPhotos.forEach(function (photo, index) {
+        galleryGrid.appendChild(createGalleryCard(photo, index));
+      });
+    }
+
+    function openPhoto(photo) {
+      dialogImage.src = photo.image;
+      dialogImage.alt = photo.title;
+      dialogTitle.textContent = photo.title;
+      dialogCategory.textContent = photo.category || "MEMORY VAULT";
+      dialogCaption.textContent = photo.caption || "";
+
+      if (typeof galleryDialog.showModal === "function") {
+        galleryDialog.showModal();
+      } else {
+        // Fallback for older browsers
+        galleryDialog.setAttribute("open", "");
+      }
+    }
+
+    function closePhoto() {
+      if (typeof galleryDialog.close === "function") {
+        galleryDialog.close();
+      } else {
+        galleryDialog.removeAttribute("open");
+      }
+    }
+
+    dialogClose.addEventListener("click", closePhoto);
+
+    galleryDialog.addEventListener("click", function (event) {
+      if (event.target === galleryDialog) {
+        closePhoto();
+      }
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && galleryDialog.open) {
+        closePhoto();
+      }
+    });
+
+    renderGallery();
+  </script>
 </body>
+
 </html>
