@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Class Gallery: XII C</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <section class="gallery-section" id="gallery">
+      <div class="section-wrap section-block">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">PROOF THAT IT HAPPENED</div>
+            <h2>The memory <span>vault.</span></h2>
+            <p>Little moments. Big stories. Photos that explain absolutely nothing out of context.</p>
+          </div><a class="text-link" href="#gallery-grid">Explore the gallery <span>↗</span></a>
+        </div>
+        <div class="gallery-grid" id="gallery-grid">
+          <button class="gallery-item gallery-large" data-title="The usual suspects"
+            data-caption="A placeholder for your best group photo.">
+            <div class="gallery-placeholder gp-purple"><span class="gallery-symbol">✳</span><span
+                class="gallery-label">GROUP PHOTO</span><strong>The usual<br>suspects.</strong></div><span
+              class="gallery-meta"><span>01 / CLASS MOMENTS</span><b>↗</b></span>
+          </button>
+          <button class="gallery-item" data-title="Somewhere between classes"
+            data-caption="Add a candid photo and the story behind it.">
+            <div class="gallery-placeholder gp-orange"><span class="gallery-symbol">✦</span><span
+                class="gallery-label">CANDID CHAOS</span><strong>Somewhere<br>between classes.</strong></div><span
+              class="gallery-meta"><span>02 / CANDIDS</span><b>↗</b></span>
+          </button>
+          <button class="gallery-item" data-title="Core memory"
+            data-caption="A school event, trip, celebration, or tiny moment.">
+            <div class="gallery-placeholder gp-blue"><span class="gallery-symbol">★</span><span
+                class="gallery-label">CORE MEMORY</span><strong>We had to<br>be there.</strong></div><span
+              class="gallery-meta"><span>03 / THE GOOD DAYS</span><b>↗</b></span>
+          </button>
+        </div>
+        <p class="gallery-note"><span>✳</span> These are designed placeholders. Add your own class photos in
+          <code>script.js</code> when you're ready.
+        </p>
+      </div>
+    </section>
+
+    <dialog class="gallery-dialog" id="galleryDialog"><button class="dialog-close" id="dialogClose"
+      aria-label="Close gallery detail">×</button>
+    <div class="dialog-art" id="dialogArt">✳</div>
+    <div class="dialog-copy"><span class="eyebrow">MEMORY VAULT</span>
+      <h3 id="dialogTitle">The usual suspects</h3>
+      <p id="dialogCaption">A placeholder for your best group photo.</p>
+    </div>
+  </dialog>
+</body>
+</html>

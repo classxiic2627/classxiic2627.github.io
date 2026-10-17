@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10101a">
+  <meta name="description" content="Thirty people. One chapter. A class archive for memories, quotes, and games.">
+  <title>The Archive — Our Class, Our Chaos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="script.js" defer></script>
+</head>
+
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <header class="site-header">
+    <a class="brand" href="#home" aria-label="The Archive home"><span class="brand-mark">A</span><span>THE
+        <b>ARCHIVE</b></span></a>
+    <button class="menu-toggle" id="menuToggle" aria-label="Open navigation" aria-expanded="false">☰</button>
+    <nav class="nav" id="nav">
+      <a class="nav-link active" href="#home">Home</a>
+      <a class="nav-link" href="#class">The Class <span class="nav-count">30</span></a>
+      <a class="nav-link" href="gallery.html">Gallery</a>
+      <a class="nav-link" href="#arcade">Arcade</a>
+      <a class="nav-link" href="#class-views">Class Views</a>
+    </nav>
+    <a class="header-cta" href="#class">Meet everyone <span>↗</span></a>
+  </header>
+
+  <main>
+    <section class="hero section-wrap" id="home">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="pulse-dot"></span> THE CLASS ARCHIVE · EST. 20XX</div>
+        <h1>Class XII C<br><span>One legendary</span><br>Chapter.</h1>
+        <p class="hero-lede">The faces, the quotes, the questionable decisions. A little corner of the internet for
+          everything that made our class <em>our class.</em></p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#class">Meet the class <span>↗</span></a>
+          <a class="button button-ghost" href="gallery.html">
+            <span class="play-icon">▶</span> Visit gallery
+          </a>
+        </div>
+        <div class="hero-proof">
+          <div class="avatar-stack"><span>K</span><span>R</span><span>A</span><span>+</span></div>
+          <p><strong>30 personalities</strong><br><span>and an unreasonable number of inside jokes</span></p>
+        </div>
+      </div>
+      <div class="hero-art" aria-label="Decorative class archive illustration">
+        <div class="orbit orbit-a"></div>
+        <div class="orbit orbit-b"></div>
+        <div class="hero-card card-back"><span class="tiny-label">CLASS ENERGY</span><span
+            class="scribble">100%</span><span class="card-foot">CHAOS, BUT MAKE IT ICONIC ✳</span></div>
+        <div class="hero-card card-front">
+          <div class="photo-collage">
+            <div class="collage-tile tile-one">✦</div>
+            <div class="collage-tile tile-two">US.</div>
+            <div class="collage-tile tile-three">✳</div>
+            <div class="collage-tile tile-four">★</div>
+          </div>
+          <div class="front-card-bottom">
+            <div><span class="tiny-label">CURRENT STATUS</span>
+              <h3>Unforgettable.</h3>
+            </div><span class="status-pill"><span></span> CLASSIC</span>
+          </div>
+        </div>
+        <div class="floating-note note-top">“Attendance?”<br><b>Present in spirit.</b></div>
+        <div class="floating-note note-bottom"><span class="note-star">✳</span>
+          <div><b>Memory unlocked</b><small>That one legendary day</small></div>
+        </div>
+      </div>
+      <div class="hero-scroll"><span></span> SCROLL TO EXPLORE</div>
+    </section>
+
+    <section class="quote-band">
+      <div class="quote-topline"><span>THE CLASS QUOTE MACHINE</span><span id="quoteIndex">01 / 06</span></div>
+      <div class="quote-content"><span class="quote-mark">“</span>
+        <blockquote id="quoteText">I am not late. The clock is just too early.</blockquote>
+        <div class="quote-byline"><span class="quote-line"></span><span id="quoteAuthor">— Someone, probably</span>
+        </div>
+      </div>
+      <div class="quote-controls"><button id="prevQuote" aria-label="Previous quote">←</button><button id="nextQuote"
+          aria-label="Next quote">→</button></div>
+      <div class="quote-progress"><span id="quoteProgress"></span></div>
+    </section>
+
+    <section class="section-wrap section-block" id="class">
+      <div class="section-heading">
+        <div>
+          <div class="eyebrow">THE PEOPLE BEHIND THE LEGEND</div>
+          <h2>Meet the <span>cast.</span></h2>
+          <p>Thirty main characters. Absolutely no filler episodes.</p>
+        </div>
+        <div class="section-stats"><strong>30</strong><span>STUDENTS<br>ONE CLASS</span></div>
+      </div>
+      <div class="directory-tools"><label class="search-box"><span>⌕</span><input type="search" id="studentSearch"
+            placeholder="Find a classmate..." aria-label="Search students"></label>
+        <div class="filter-wrap"><span>SHOW</span><select id="studentFilter" aria-label="Filter students">
+            <option value="all">Everyone</option>
+            <option value="legend">Certified legends</option>
+            <option value="chaos">Agents of chaos</option>
+            <option value="quiet">Quietly iconic</option>
+          </select></div>
+      </div>
+      <div class="student-list" id="studentList" aria-live="polite"></div>
+      <div class="directory-footer"><span id="studentCount">Showing 30 of 30 students</span><span>✳ Director: A number of coincidences</span></div>
+    </section>
+
+
+
+
+    <section class="class-views-section" id="class-views">
+      <div class="section-wrap section-block">
+
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">THIRTY PEOPLE · THIRTY PERSPECTIVES</div>
+            <h2>Class <span>views.</span></h2>
+            <p>
+              Opinions, photographs, unforgettable moments, and the stories
+              that make our class uniquely ours.
+            </p>
+          </div>
+          <span class="views-stamp">OUR<br>STORIES ✳</span>
+        </div>
+
+        <div class="views-intro">
+          <span class="views-intro-icon">✦</span>
+          <div>
+            <h3>Everyone has a story.</h3>
+            <p>
+              Share your perspective, post a favourite memory, or contribute
+              a photograph that deserves a place in the archive.
+            </p>
+          </div>
+        </div>
+
+
+        <details class="views-expandable">
+          <summary>
+            <span>Explore all class views</span>
+            <span class="views-expand-icon">＋</span>
+          </summary>
+
+          <div class="class-views-grid" id="viewsGrid">
+            <!-- JavaScript inserts the view cards here -->
+          </div>
+
+          <div class="views-submit">
+            <div>
+              <div class="eyebrow">YOUR TURN</div>
+              <h3>Have something to share?</h3>
+              <p>Share an opinion, memory, or photograph.</p>
+            </div>
+
+            <a class="button button-primary" href="https://forms.gle/jBnXEv5ayMfFayZHA" target="_blank" rel="noopener noreferrer">
+              Submit your view ↗
+            </a>
+          </div>
+        </details>
+
+
+        <!-- <a class="button button-primary" href="https://forms.gle/REPLACE_WITH_YOUR_FORM_ID" target="_blank"
+          rel="noopener noreferrer">
+          Submit your view <span>↗</span>
+        </a> -->
+      </div>
+
+      <p class="gallery-note">
+        ✳ For your memories/opinions/images to be uploaded, please fill the form.
+      </p>
+
+      </div>
+    </section>
+
+
+    <section class="section-wrap section-block arcade-section" id="arcade">
+      <div class="section-heading">
+        <div>
+          <div class="eyebrow">BREAK TIME, BUT DIGITAL</div>
+          <h2>Welcome to the <span>arcade.</span></h2>
+          <p>Procrastination, now with a high-score potential.</p>
+        </div><span class="arcade-stamp">INSERT<br>COIN <b>↘</b></span>
+      </div>
+      <div class="game-grid">
+        <article class="game-card flappy-card">
+          <div class="game-visual flappy-visual">
+            <div class="pixel-sun"></div>
+            <div class="pixel-cloud cloud-a"></div>
+            <div class="pixel-cloud cloud-b"></div>
+            <div class="pixel-bird">◆</div>
+            <div class="pipe pipe-one"></div>
+            <div class="pipe pipe-two"></div><span class="game-tag">COMING SOON</span>
+          </div>
+          <div class="game-info">
+            <div><span class="game-number">GAME 01</span>
+              <h3>Flappy Bird</h3>
+              <p>One tap. One bird. Infinite chances to blame the lag.</p>
+            </div><button class="coming-button" disabled>In development <span>↗</span></button>
+          </div>
+        </article>
+        <article class="game-card snake-card">
+          <div class="game-visual snake-visual">
+            <div class="snake-grid"></div>
+            <div class="snake-body"><i></i><i></i><i></i><i></i><i></i><b></b></div>
+            <div class="snake-food">✦</div><span class="game-tag">COMING SOON</span>
+          </div>
+          <div class="game-info">
+            <div><span class="game-number">GAME 02</span>
+              <h3>Snake</h3>
+              <p>Eat. Grow. Turn too late. Repeat.</p>
+            </div><button class="coming-button" disabled>In development <span>↗</span></button>
+          </div>
+        </article>
+      </div>
+      <div class="arcade-footnote"><span class="pulse-dot"></span> Games are under developement right now.</div>
+    </section>
+
+    <section class="closing-cta">
+      <div class="closing-spark">✳</div>
+      <div class="eyebrow">BEFORE THE BELL RINGS</div>
+      <h2>Make it a chapter<br>worth <span>remembering.</span></h2>
+      <p>Add the real faces, the real quotes, and all the tiny details that make this class yours.</p><a href="#class"
+        class="button button-primary">Start with the people <span>↗</span></a>
+    </section>
+  </main>
+
+  <footer class="site-footer"><a class="brand" href="#home"><span class="brand-mark">A</span><span>THE
+        <b>ARCHIVE</b></span></a><span>MADE OF MEMORIES & QUESTIONABLE DECISIONS.</span><a href="#home">BACK TO TOP
+      ↑</a></footer>
+
+  
+</body>
+
+</html>
