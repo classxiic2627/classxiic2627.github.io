@@ -20,7 +20,10 @@
 
 html {
     scroll-behavior: smooth;
-    scroll-padding-top: 90px
+    scroll-padding-top: 90px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
 }
 
 body {
@@ -29,7 +32,19 @@ body {
     color: var(--text);
     font-family: var(--font);
     line-height: 1.6;
-    overflow-x: hidden
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    overflow-x: clip;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+img, video, iframe {
+    max-width: 100%;
 }
 
 body:before {
@@ -2131,4 +2146,76 @@ select {
 
 .views-expandable .views-submit {
   margin: 0 20px 20px;
+}
+
+
+/* ===== Mobile horizontal-overflow safeguard =====
+   Keep decorative, transformed, and expanded elements from widening the page. */
+html,
+body {
+    max-width: 100%;
+    overflow-x: hidden !important;
+}
+
+body {
+    position: relative;
+}
+
+main,
+section,
+header,
+footer,
+.site-header,
+.section-wrap,
+.section-block,
+.student-list,
+.student-card,
+.student-summary,
+.student-expanded,
+.class-views-grid,
+.game-grid {
+    min-width: 0;
+    max-width: 100%;
+}
+
+/* The hero illustration intentionally extends beyond its box on desktop.
+   Clip its decoration on narrow screens instead of letting it widen the page. */
+@media (max-width: 620px) {
+    .hero-art {
+        width: 100%;
+        max-width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+        overflow: hidden;
+    }
+
+    .orbit,
+    .hero-card,
+    .floating-note {
+        max-width: 100%;
+    }
+
+    .site-header {
+        gap: 10px;
+    }
+
+    .brand {
+        min-width: 0;
+    }
+
+    .brand > span:last-child {
+        overflow-wrap: anywhere;
+    }
+
+    .quote-topline,
+    .directory-footer,
+    .views-submit {
+        min-width: 0;
+    }
+
+    .views-expandable,
+    .views-expandable summary {
+        min-width: 0;
+        max-width: 100%;
+    }
 }
