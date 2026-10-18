@@ -128,16 +128,18 @@ async function handle(request, env) {
     const adminPassword = body.adminPassword;
     const memberPassword = body.memberPassword;
     if (!/^[a-zA-Z0-9._-]{3,64}$/.test(adminUsername)) fail("Admin username must be 3–64 letters, numbers, dots, underscores or hyphens.");
+    if (adminUsername.toLowerCase() === "class-members") fail("Choose a different admin username; that username is reserved for the class member account.");
     if (!validPassword(adminPassword) || !validPassword(memberPassword)) fail("Both passwords must be at least 12 characters.");
     if (adminPassword === memberPassword) fail("Admin and member passwords must be different.");
-    for (const entry of [
-      {username:adminUsername, displayName:"Class Archive Admin", role:"admin", password:adminPassword},
-      {username:"class-members", displayName:"Class Members", role:"member", password:memberPassword}
-    ]) {
-      const h = await passwordHash(entry.password);
-      await env.DB.prepare("INSERT INTO users(username,display_name,role,password_hash,must_change_password) VALUES(?,?,?,?,0)")
-        .bind(entry.username, entry.displayName, entry.role, h.salt + "$" + h.hash).run();
-    }
+    const adminHash = await passwordHash(adminPassword);
+    const memberHash = await passwordHash(memberPassword);
+    // D1 batch executes atomically, preventing a partial setup if one insert fails.
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO users(username,display_name,role,password_hash,must_change_password) VALUES(?,?,?,?,0)")
+        .bind(adminUsername, "Class Archive Admin", "admin", adminHash.salt + "$" + adminHash.hash),
+      env.DB.prepare("INSERT INTO users(username,display_name,role,password_hash,must_change_password) VALUES(?,?,?,?,0)")
+        .bind("class-members", "Class Members", "member", memberHash.salt + "$" + memberHash.hash)
+    ]);
     return json({ok:true, message:"Accounts initialized. Store both passwords safely and rotate/remove SETUP_SECRET."}, 201, env.ALLOWED_ORIGIN);
   }
   if (request.method === "POST" && path === "/api/member/login") return login(request, env, "member");
