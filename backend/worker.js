@@ -154,7 +154,7 @@ async function handle(request, env) {
   if (request.method === "POST" && path === "/api/account/password") {
     const user = await auth(request, env);
     const body = await readJson(request);
-    if (typeof body.currentPassword !== "string" || !validPassword(body.newPassword)) fail("New password must be at least 12 characters.");
+    if (typeof body.currentPassword !== "string" || body.currentPassword.length > 256 || !validPassword(body.newPassword)) fail("Current password must be valid and the new password must be at least 12 characters.");
     const row = await env.DB.prepare("SELECT password_hash FROM users WHERE id=?").bind(user.id).first();
     const [salt, hash] = row.password_hash.split("$");
     if (!(await verifyPassword(body.currentPassword, salt, hash))) fail("Current password is incorrect.", 401);
