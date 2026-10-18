@@ -270,6 +270,20 @@ function escapeHTML(value) {
 const classViews = [
   {
     type: "memory",
+    title: "The Boys!",
+    text: "Wandering in school :D",
+    author: "Krishna",
+    image: "vimages/krishna6.png"
+  },
+  {
+    type: "memory",
+    title: "Birthday made memorable thanks to friends!",
+    text: "One of the best birthdays of my life... All thanks to these guys!",
+    author: "Krishna",
+    image: "vimages/krishna5.jpg"
+  },
+  {
+    type: "memory",
     title: "Got My Bro",
     text: "In class 11th and 12th, others got their alleged life parters... I GOT MY HARSHITA ♥",
     author: "Krishna",
