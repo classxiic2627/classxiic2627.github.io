@@ -1,0 +1,57 @@
+name: Community Hub checks
+
+on:
+  pull_request:
+    paths:
+      - "community.js"
+      - "community.html"
+      - "backend/**"
+      - ".github/workflows/community-checks.yml"
+  push:
+    branches:
+      - main
+      - "feature/community-security-foundation"
+    paths:
+      - "community.js"
+      - "community.html"
+      - "backend/**"
+      - ".github/workflows/community-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-and-schema:
+    name: JavaScript syntax and SQL schema
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check frontend JavaScript syntax
+        run: node --check community.js
+      - name: Check Worker JavaScript syntax
+        run: node --check backend/worker.js
+      - name: Validate D1 schema with SQLite
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          connection = sqlite3.connect(":memory:")
+          schema = Path("backend/schema.sql").read_text(encoding="utf-8")
+          connection.executescript(schema)
+          expected = {"users", "sessions", "content", "announcements", "push_subscriptions"}
+          actual = {
+              row[0] for row in connection.execute(
+                  "SELECT name FROM sqlite_master WHERE type='table'"
+              )
+          }
+          missing = expected - actual
+          if missing:
+              raise SystemExit(f"Missing schema tables: {sorted(missing)}")
+          print(f"Schema OK: {len(expected)} expected tables created.")
+          PY
