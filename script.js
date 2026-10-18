@@ -272,6 +272,13 @@ const classViews = [
     type: "photo",
     title: "",
     text: "",
+    author: "Uttam",
+    image: "vimages/uttam2.png"
+  },
+  {
+    type: "photo",
+    title: "",
+    text: "",
     author: "Shailee",
     image: "vimages/shailee1.jpg"
   },
