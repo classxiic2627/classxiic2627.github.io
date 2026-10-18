@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10101a">
+  <meta name="description" content="Share class memories and read announcements in the Class XII C Archive.">
+  <title>Community Hub — The Archive</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .community-main{max-width:1080px;margin:0 auto;padding:48px 22px 80px}
+    .community-heading{margin-bottom:30px}.community-heading h1{font:700 clamp(2.2rem,6vw,4rem) var(--display);line-height:1.08;margin:.3rem 0 1rem}.community-heading h1 span{color:var(--purple)}
+    .community-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:clamp(18px,3vw,30px);margin:22px 0}
+    .community-panel h2{font:600 1.5rem var(--display);margin-top:0}.community-form{display:grid;gap:14px;max-width:650px}.community-form label{display:grid;gap:6px;color:var(--muted);font-size:.92rem}
+    .community-form input,.community-form textarea,.community-form select{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit}
+    .community-form textarea{min-height:100px;resize:vertical}.community-form input:focus,.community-form textarea:focus,.community-form select:focus{outline:2px solid var(--purple)}
+    .community-actions{display:flex;gap:10px;flex-wrap:wrap}.button-danger{background:#6c2935;color:#fff;border:0;cursor:pointer;border-radius:999px;padding:9px 16px;font:inherit}
+    .community-status{color:var(--orange);min-height:1.5em}.community-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px}
+    .community-card{overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--panel2)}.community-card img,.community-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#08080d}.community-card-body{padding:14px}.community-card h3,.announcement h3{margin:0 0 6px}.community-card p,.announcement p{color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+    .announcement-list{display:grid;gap:12px}.announcement{padding:16px;border:1px solid var(--line);border-radius:14px}.announcement small{display:block;color:var(--muted);margin-top:8px}
+    .admin-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}.admin-item p{margin:4px 0 0;color:var(--muted);font-size:.9rem}
+    [hidden]{display:none!important}.community-nav{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:22px}.community-nav a{color:var(--purple)}
+  </style>
+  <script src="community.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="The Archive home"><span class="brand-mark">A</span><span>THE <b>ARCHIVE</b></span></a>
+    <nav class="nav community-nav" aria-label="Community navigation"><a href="index.html">Home</a><a href="gallery.html">Gallery</a><a href="#share">Share a memory</a><a href="#admin">Admin</a></nav>
+  </header>
+  <main class="community-main">
+    <div class="community-heading"><div class="eyebrow">CLASS XII C · COMMUNITY</div><h1>Keep the <span>memories</span> coming.</h1><p>Share class moments and check the latest announcements. Please only post photos or videos you have permission to share.</p></div>
+    <section class="community-panel" aria-labelledby="announcementsTitle"><h2 id="announcementsTitle">Class announcements</h2><div id="announcementList" class="announcement-list"><p>Loading announcements…</p></div></section>
+    <section class="community-panel" id="share" aria-labelledby="shareTitle">
+      <h2 id="shareTitle">Share a memory</h2>
+      <p>Sign in with the class upload password to contribute a photo or video. Uploaded posts are visible to visitors of the archive.</p>
+      <form id="memberLogin" class="community-form"><label>Class upload password<input id="memberPassword" type="password" autocomplete="current-password" required maxlength="256"></label><button class="button button-primary" type="submit">Unlock upload form</button></form>
+      <p id="memberStatus" class="community-status" role="status" aria-live="polite"></p>
+      <form id="uploadForm" class="community-form" hidden>
+        <label>Media type<select id="uploadType" required><option value="image">Photo</option><option value="video">Video</option></select></label>
+        <label>Photo or video<input id="uploadMedia" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/ogg" required></label>
+        <label>Title<input id="uploadTitle" type="text" maxlength="120" required></label>
+        <label>Caption<textarea id="uploadCaption" maxlength="1000" placeholder="Add a little context (optional)"></textarea></label>
+        <div class="community-actions"><button class="button button-primary" type="submit">Publish memory</button><button class="button button-ghost" id="memberLogout" type="button">Sign out</button></div>
+        <small>Maximum file size: 15 MB. Posts are published immediately; only share media with classmates' consent.</small>
+      </form>
+    </section>
+    <section class="community-panel" aria-labelledby="memoriesTitle"><h2 id="memoriesTitle">Community memories</h2><p id="publicStatus" class="community-status" role="status" aria-live="polite"></p><div id="publicItems" class="community-grid"><p>Loading memories…</p></div></section>
+    <section class="community-panel" id="admin" aria-labelledby="adminTitle">
+      <h2 id="adminTitle">Admin desk</h2>
+      <p>For the designated class archive administrator.</p>
+      <form id="adminLogin" class="community-form"><label>Admin username<input id="adminUsername" type="text" autocomplete="username" maxlength="64" required></label><label>Admin password<input id="adminPassword" type="password" autocomplete="current-password" required maxlength="256"></label><button class="button button-primary" type="submit">Admin sign in</button></form>
+      <p id="adminStatus" class="community-status" role="status" aria-live="polite"></p>
+      <div id="adminArea" hidden>
+        <h3>Published posts</h3><div id="adminItems"></div>
+        <h3>Post an announcement</h3>
+        <form id="announcementForm" class="community-form"><label>Title<input id="announcementTitle" maxlength="120" required></label><label>Announcement<textarea id="announcementBody" maxlength="3000" required></textarea></label><button class="button button-primary" type="submit">Publish announcement</button></form>
+        <div class="community-actions" style="margin-top:16px"><button id="adminLogout" class="button button-ghost" type="button">Admin sign out</button></div>
+      </div>
+    </section>
+    <section class="community-panel"><h2>Notifications</h2><p>Browser push notifications are not active yet. No notification permission will be requested.</p><button id="subscribeButton" class="button button-ghost" type="button">Check notification status</button><p id="pushStatus" class="community-status" role="status"></p></section>
+  </main>
+  <footer class="site-footer"><p>THE ARCHIVE · CLASS XII C</p><a href="index.html">Back to the archive ↗</a></footer>
+</body>
+</html>
