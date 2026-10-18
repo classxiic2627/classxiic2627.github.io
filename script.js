@@ -269,6 +269,27 @@ function escapeHTML(value) {
 
 const classViews = [
   {
+    type: "memory",
+    title: "Got My Bro",
+    text: "In class 11th and 12th, others got their alleged life parters... I GOT MY HARSHITA ♥",
+    author: "Krishna",
+    image: "vimages/krishna4.png"
+  },
+  {
+    type: "memory",
+    title: "Rashi, the best bandhu...",
+    text: "do saal ke liye my support system and the only one jiske sahare ye bhayanak period of pcmc guzar gya..",
+    author: "Samriddhi",
+    image: "vimages/samriddhi2.png"
+  },
+  {
+    type: "memory",
+    title: "GAADI WALA AAYA GHAR SE KACHRA NIKAAL..",
+    text: "jitni safai bina bole school me kari utni to kabhi ghar pe bhi nhi kari.. btw 35 ka ice cream khane mila",
+    author: "Samriddhi",
+    image: "vimages/samriddhi1.jpeg"
+  },
+  {
     type: "photo",
     title: "",
     text: "",
