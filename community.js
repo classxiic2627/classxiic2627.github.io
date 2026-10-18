@@ -1,18 +1,13 @@
-/*
- * Community Hub frontend.
- * Set API_BASE to the deployed Cloudflare Worker URL after backend setup.
- * No passwords or privileged credentials belong in this file.
- */
+/* Community Hub frontend. Set API_BASE to the deployed Worker origin before launch. */
 (() => {
   "use strict";
-  const API_BASE = ""; // Example: https://class-archive-api.YOUR-SUBDOMAIN.workers.dev
+  const API_BASE = ""; // Example: https://class-archive-api.example.workers.dev
   const $ = (id) => document.getElementById(id);
   let memberToken = "";
   let adminToken = "";
-  let vapidPublicKey = "";
 
   async function api(path, options = {}, token = "") {
-    if (!API_BASE) throw new Error("Backend not configured yet. Deploy backend/ and set API_BASE in community.js.");
+    if (!API_BASE) throw new Error("The community API is not connected yet. Deployment setup is still required.");
     const headers = new Headers(options.headers || {});
     if (token) headers.set("Authorization", "Bearer " + token);
     if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
@@ -21,87 +16,145 @@
     if (!response.ok) throw new Error(data.error || "Request failed (" + response.status + ").");
     return data;
   }
-  function status(id, message) { $(id).textContent = message; }
-  function b64urlToBytes(value) {
-    const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
-    return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+  const status = (id, message) => { $(id).textContent = message; };
+  const node = (tag, text, className) => {
+    const element = document.createElement(tag);
+    if (text !== undefined) element.textContent = text;
+    if (className) element.className = className;
+    return element;
+  };
+
+  async function loadPublicContent() {
+    try {
+      const [content, announcements] = await Promise.all([
+        api("/api/content"),
+        api("/api/announcements")
+      ]);
+      const grid = $("publicItems");
+      grid.replaceChildren();
+      for (const item of content.items || []) {
+        const card = node("article", undefined, "community-card");
+        const mediaUrl = API_BASE + item.mediaUrl;
+        const media = node(item.type === "video" ? "video" : "img");
+        media.src = mediaUrl;
+        if (item.type === "video") { media.controls = true; media.preload = "metadata"; media.playsInline = true; }
+        else { media.alt = item.title; media.loading = "lazy"; }
+        const body = node("div", undefined, "community-card-body");
+        body.append(node("h3", item.title), node("p", item.caption || "A class memory."));
+        card.append(media, body);
+        grid.append(card);
+      }
+      if (!grid.children.length) grid.append(node("p", "No community posts yet. Be the first to share a memory."));
+      const list = $("announcementList");
+      list.replaceChildren();
+      for (const item of announcements.items || []) {
+        const article = node("article", undefined, "announcement");
+        article.append(node("h3", item.title), node("p", item.body), node("small", new Date(item.createdAt).toLocaleString()));
+        list.append(article);
+      }
+      if (!list.children.length) list.append(node("p", "No announcements yet."));
+    } catch (error) {
+      status("publicStatus", error.message);
+    }
   }
 
-  $("memberLogin").addEventListener("submit", async e => {
-    e.preventDefault();
+  $("memberLogin").addEventListener("submit", async (event) => {
+    event.preventDefault();
     try {
       const data = await api("/api/member/login", {method:"POST", body:JSON.stringify({password:$("memberPassword").value})});
       memberToken = data.token;
       $("uploadForm").hidden = false;
       $("memberLogin").hidden = true;
       $("memberPassword").value = "";
-      status("memberStatus", "Unlocked. Your post will publish immediately.");
-    } catch (err) { status("memberStatus", err.message); }
+      status("memberStatus", "Signed in. Posts are visible to visitors of the class archive.");
+    } catch (error) { status("memberStatus", error.message); }
   });
-  $("memberLogout").addEventListener("click", () => {
-    memberToken = ""; $("uploadForm").hidden = true; $("memberLogin").hidden = false;
-    $("uploadForm").reset(); status("memberStatus", "Upload form locked.");
+  $("memberLogout").addEventListener("click", async () => {
+    try { if (memberToken) await api("/api/logout", {method:"POST"}, memberToken); } catch (_) {}
+    memberToken = "";
+    $("uploadForm").hidden = true;
+    $("memberLogin").hidden = false;
+    $("uploadForm").reset();
+    status("memberStatus", "Signed out.");
   });
-  $("uploadForm").addEventListener("submit", async e => {
-    e.preventDefault();
+  $("uploadForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
     const file = $("uploadMedia").files[0];
-    if (file && file.size > 15 * 1024 * 1024) { status("memberStatus", "Media must be 15 MB or smaller."); return; }
+    if (!file) { status("memberStatus", "Choose a photo or video first."); return; }
+    if (file.size > 15 * 1024 * 1024) { status("memberStatus", "Media must be 15 MB or smaller."); return; }
     const form = new FormData();
-    form.set("type", $("uploadType").value); form.set("title", $("uploadTitle").value.trim());
-    form.set("caption", $("uploadCaption").value.trim()); if (file) form.set("media", file);
+    form.set("type", $("uploadType").value);
+    form.set("title", $("uploadTitle").value.trim());
+    form.set("caption", $("uploadCaption").value.trim());
+    form.set("media", file);
     try {
       await api("/api/content", {method:"POST", body:form}, memberToken);
-      $("uploadForm").reset(); status("memberStatus", "Published successfully. Subscribers will be notified if push is configured.");
-    } catch (err) { status("memberStatus", err.message); }
+      $("uploadForm").reset();
+      status("memberStatus", "Published. Push notifications are not active yet.");
+      await loadPublicContent();
+    } catch (error) { status("memberStatus", error.message); }
   });
-  $("adminLogin").addEventListener("submit", async e => {
-    e.preventDefault();
+
+  $("adminLogin").addEventListener("submit", async (event) => {
+    event.preventDefault();
     try {
-      const data = await api("/api/admin/login", {method:"POST", body:JSON.stringify({password:$("adminPassword").value})});
-      adminToken = data.token; $("adminArea").hidden = false; $("adminLogin").hidden = true; $("adminPassword").value = "";
-      await refreshAdmin(); status("adminStatus", "Signed in as admin.");
-    } catch (err) { status("adminStatus", err.message); }
+      const data = await api("/api/admin/login", {method:"POST", body:JSON.stringify({
+        username:$("adminUsername").value.trim(),
+        password:$("adminPassword").value
+      })});
+      adminToken = data.token;
+      $("adminArea").hidden = false;
+      $("adminLogin").hidden = true;
+      $("adminPassword").value = "";
+      await refreshAdmin();
+      status("adminStatus", "Signed in as administrator.");
+    } catch (error) { status("adminStatus", error.message); }
   });
   async function refreshAdmin() {
     const data = await api("/api/admin/content", {}, adminToken);
-    $("adminItems").replaceChildren();
+    const list = $("adminItems");
+    list.replaceChildren();
     for (const item of data.items || []) {
-      const row = document.createElement("div"); row.className = "status";
-      const title = document.createElement("strong"); title.textContent = item.title || "(untitled)";
-      const meta = document.createElement("p"); meta.textContent = item.type + " · " + new Date(item.createdAt).toLocaleString();
-      const del = document.createElement("button"); del.textContent = "Delete"; del.className = "secondary";
+      const row = node("div", undefined, "admin-item");
+      const info = node("div");
+      info.append(node("strong", item.title || "(untitled)"), node("p", item.type + " · " + new Date(item.createdAt).toLocaleString()));
+      const del = node("button", "Delete", "button button-danger");
+      del.type = "button";
       del.addEventListener("click", async () => {
-        if (!confirm("Permanently delete this item?")) return;
-        try { await api("/api/admin/content/" + encodeURIComponent(item.id), {method:"DELETE"}, adminToken); await refreshAdmin(); }
-        catch (err) { status("adminStatus", err.message); }
+        if (!confirm("Permanently delete this post and its uploaded media?")) return;
+        try {
+          await api("/api/admin/content/" + encodeURIComponent(item.id), {method:"DELETE"}, adminToken);
+          await refreshAdmin();
+          await loadPublicContent();
+          status("adminStatus", "Post deleted.");
+        } catch (error) { status("adminStatus", error.message); }
       });
-      row.append(title, meta, del); $("adminItems").append(row);
+      row.append(info, del);
+      list.append(row);
     }
-    if (!(data.items || []).length) $("adminItems").textContent = "No published items yet.";
+    if (!list.children.length) list.append(node("p", "No published posts yet."));
   }
-  $("announcementForm").addEventListener("submit", async e => {
-    e.preventDefault();
+  $("announcementForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
     try {
-      await api("/api/admin/announcements", {method:"POST", body:JSON.stringify({title:$("announcementTitle").value.trim(), body:$("announcementBody").value.trim()})}, adminToken);
-      $("announcementForm").reset(); status("adminStatus", "Announcement published. Push delivery depends on configured subscriptions.");
-    } catch (err) { status("adminStatus", err.message); }
+      await api("/api/admin/announcements", {method:"POST", body:JSON.stringify({
+        title:$("announcementTitle").value.trim(), body:$("announcementBody").value.trim()
+      })}, adminToken);
+      $("announcementForm").reset();
+      status("adminStatus", "Announcement published. Push notifications are not active yet.");
+      await loadPublicContent();
+    } catch (error) { status("adminStatus", error.message); }
   });
-  $("adminLogout").addEventListener("click", () => {
-    adminToken = ""; $("adminArea").hidden = true; $("adminLogin").hidden = false;
+  $("adminLogout").addEventListener("click", async () => {
+    try { if (adminToken) await api("/api/logout", {method:"POST"}, adminToken); } catch (_) {}
+    adminToken = "";
+    $("adminArea").hidden = true;
+    $("adminLogin").hidden = false;
     status("adminStatus", "Signed out.");
   });
-  $("subscribeButton").addEventListener("click", async () => {
-    try {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("This browser does not support web push.");
-      const config = await api("/api/push/public-key");
-      vapidPublicKey = config.publicKey;
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") throw new Error("Notification permission was not granted.");
-      const registration = await navigator.serviceWorker.register("sw.js");
-      const subscription = await registration.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:b64urlToBytes(vapidPublicKey)});
-      await api("/api/push/subscribe", {method:"POST", body:JSON.stringify(subscription.toJSON())});
-      status("pushStatus", "This device is subscribed to class notifications.");
-    } catch (err) { status("pushStatus", err.message); }
+
+  $("subscribeButton").addEventListener("click", () => {
+    status("pushStatus", "Push notifications are not implemented yet, so this button will not request browser permissions.");
   });
-  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+  loadPublicContent();
 })();
