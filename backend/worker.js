@@ -164,7 +164,7 @@ async function handle(request, env) {
   }
 
   if (request.method === "GET" && path === "/api/content") {
-    const rows = await env.DB.prepare("SELECT id,type,title,caption,user_id,created_at AS createdAt FROM content ORDER BY created_at DESC LIMIT 200").all();
+    const rows = await env.DB.prepare("SELECT id,type,title,caption,created_at AS createdAt FROM content ORDER BY created_at DESC LIMIT 200").all();
     return json({items:(rows.results || []).map(x=>({...x, mediaUrl:"/api/media/"+encodeURIComponent(x.id)}))}, 200, env.ALLOWED_ORIGIN);
   }
   if (request.method === "POST" && path === "/api/content") {
@@ -199,7 +199,8 @@ async function handle(request, env) {
     const object = await env.MEDIA.get(row.media_key);
     if (!object) fail("Media not found.", 404);
     const headers = new Headers({"Content-Type":row.media_mime,"X-Content-Type-Options":"nosniff","Cache-Control":"private, max-age=60","Content-Length":String(row.media_size)});
-    return new Response(object.body,{headers,...(env.ALLOWED_ORIGIN?{headers:new Headers({...Object.fromEntries(headers),...corsHeaders(env.ALLOWED_ORIGIN)})}:{})});
+    if (env.ALLOWED_ORIGIN) for (const [key, value] of Object.entries(corsHeaders(env.ALLOWED_ORIGIN))) headers.set(key, value);
+    return new Response(object.body,{headers});
   }
   if (request.method === "GET" && path === "/api/admin/content") {
     const user = await auth(request, env, "admin");
