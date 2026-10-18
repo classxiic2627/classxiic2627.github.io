@@ -34,7 +34,6 @@ compatibility_date = "2026-10-19"
 binding = "DB"
 database_name = "class-archive"
 database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
@@ -60,10 +59,10 @@ Use a password manager. Do not reuse your email, school, or GitHub password. Thi
 
 ## Important integration notes
 
-- Frontend `community.js` currently assumes the member login body is just `{password}`; that matches this API. Admin login must send `{username,password}`, so the current admin form needs a username field before production.
-- The current frontend does not yet provide a password-change form. Add it before making the portal available, since the API enforces changed passwords if an account is flagged.
+- Frontend `community.js` sends the member login body as `{password}` and admin login as `{username,password}`; both match the API. The admin form includes a username field.
+- The API supports password changes, but the frontend does not yet provide a password-change form. Add and test that UI before launch so users can rotate credentials without a manual API request.
 - Content is delivered through `/api/media/:id`; the frontend gallery must render these media URLs, not attempt to read private R2 objects directly.
 - The current frontend's `/api/push/subscribe` flow is not ready for production. Push delivery is not implemented and the API deliberately returns 501 instead of pretending notifications work.
 - This starter uses one shared class-member password for simplicity. If the class needs per-student access, implement individual account provisioning and reset/revocation workflows before launch.
 - Do not upload photos or videos of classmates without appropriate consent. Provide a clear removal contact/process and do not publish sensitive personal information.
-- Run a security review and smoke tests on a staging Worker before sharing the portal. The static site and API must both use HTTPS.
+- Add Cloudflare rate limiting (especially for login and setup), then run a security review and smoke tests on a staging Worker before sharing the portal. The Worker currently does not implement application-level rate limiting. The static site and API must both use HTTPS.
