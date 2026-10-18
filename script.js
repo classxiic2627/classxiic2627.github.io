@@ -269,6 +269,34 @@ function escapeHTML(value) {
 
 const classViews = [
   {
+    type: "photo",
+    title: "",
+    text: "",
+    author: "Shailee",
+    image: "vimages/shailee1.jpg"
+  },
+  {
+    type: "photo",
+    title: "",
+    text: "",
+    author: "Shailee",
+    image: "vimages/shailee2.jpg"
+  },
+  {
+    type: "photo",
+    title: "",
+    text: "",
+    author: "Shailee",
+    image: "vimages/shailee3.jpg"
+  },
+  {
+    type: "photo",
+    title: "Trio",
+    text: "6 years of trio",
+    author: "Original GD",
+    image: "vimages/amrit1.jpg"
+  },
+  {
     type: "opinion",
     title: "Ruchi",
     text: "Ruchi is too pretty and kind hearted! ♥",
