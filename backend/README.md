@@ -42,7 +42,7 @@ binding = "MEDIA"
 bucket_name = "class-archive-media"
 ```
 
-Use a local `wrangler.toml` (or dashboard configuration) and real database IDs only in your own environment. The duplicate placeholder in the illustrative D1 block should be represented once in the actual config.
+Use a local `wrangler.toml` (or dashboard configuration) and real database IDs only in your own environment.
 
 ## One-time account initialization
 
