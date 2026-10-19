@@ -15,6 +15,13 @@
   let adminToken = "";
   let memberMustChangePassword = false;
   let adminMustChangePassword = false;
+  const uploadToken = () => {
+    if (memberToken && !memberMustChangePassword) return memberToken;
+    if (adminToken && !adminMustChangePassword) return adminToken;
+    return "";
+  };
+  const uploadStatusId = () => memberToken && !memberMustChangePassword ? "memberStatus" : "adminStatus";
+  const syncUploadForm = () => { $("uploadForm").hidden = !uploadToken(); };
 
   async function api(path, options = {}, token = "") {
     if (!API_BASE) throw new Error("Community API is not configured. Set the community-api-base meta value to the approved Worker URL after staging verification.");
@@ -78,7 +85,7 @@
       $("memberLogin").hidden = true;
       $("memberUsername").value = "";
       $("memberPassword").value = "";
-      $("uploadForm").hidden = memberMustChangePassword;
+      syncUploadForm();
       $("memberPasswordChange").hidden = !memberMustChangePassword;
       $("showMemberPasswordChange").hidden = memberMustChangePassword;
       $("cancelMemberPasswordChange").hidden = memberMustChangePassword;
@@ -96,7 +103,7 @@
     $("memberPasswordChange").reset();
     $("showMemberPasswordChange").hidden = false;
     $("cancelMemberPasswordChange").hidden = false;
-    $("uploadForm").hidden = true;
+    syncUploadForm();
     $("memberLogin").hidden = false;
     $("uploadForm").reset();
     status("memberStatus", "Signed out.");
@@ -131,25 +138,28 @@
       $("memberSessionActions").hidden = true;
       $("memberPasswordChange").reset();
       $("memberPasswordChange").hidden = true;
-      $("uploadForm").hidden = true;
+      syncUploadForm();
       $("memberLogin").hidden = false;
       status("memberStatus", "Password changed and all sessions revoked. Please sign in again.");
     } catch (error) { status("memberStatus", error.message); }
   });
   $("uploadForm").addEventListener("submit", async (event) => {
     event.preventDefault();
+    const token = uploadToken();
+    const targetStatus = uploadStatusId();
+    if (!token) { status(targetStatus, "Sign in and change your temporary password before uploading."); return; }
     const file = $("uploadMedia").files[0];
-    if (!file) { status("memberStatus", "Choose a photo or video first."); return; }
-    if (file.size > 50 * 1024 * 1024) { status("memberStatus", "Media must be 50 MB or smaller."); return; }
+    if (!file) { status(targetStatus, "Choose a photo or video first."); return; }
+    if (file.size > 50 * 1024 * 1024) { status(targetStatus, "Media must be 50 MB or smaller."); return; }
     const form = new FormData();
     form.set("type", $("uploadType").value);
     form.set("title", $("uploadTitle").value.trim());
     form.set("caption", $("uploadCaption").value.trim());
     form.set("media", file);
     try {
-      await api("/api/content", {method:"POST", body:form}, memberToken);
+      await api("/api/content", {method:"POST", body:form}, token);
       $("uploadForm").reset();
-      status("memberStatus", "Published. Push notifications are not active yet.");
+      status(targetStatus, "Published. Push notifications are not active yet.");
       await loadPublicContent();
     } catch (error) { status("memberStatus", error.message); }
   });
@@ -163,6 +173,7 @@
       })});
       adminToken = data.token;
       adminMustChangePassword = !!data.mustChangePassword;
+      syncUploadForm();
       $("adminSessionActions").hidden = false;
       $("adminLogin").hidden = true;
       $("adminPassword").value = "";
@@ -232,6 +243,7 @@
       }, adminToken);
       adminToken = "";
       adminMustChangePassword = false;
+      syncUploadForm();
       $("adminSessionActions").hidden = true;
       $("adminPasswordChange").reset();
       $("adminPasswordChange").hidden = true;
@@ -363,6 +375,7 @@
     try { if (adminToken) await api("/api/logout", {method:"POST"}, adminToken); } catch (_) {}
     adminToken = "";
     adminMustChangePassword = false;
+    syncUploadForm();
     $("adminSessionActions").hidden = true;
     $("adminPasswordChange").hidden = true;
     $("adminPasswordChange").reset();
