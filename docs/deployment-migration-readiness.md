@@ -47,9 +47,184 @@ This is a local-only demo of the existing site UI and Worker backed by Wrangler'
 **Terminal 1 — prepare and start the local API** (from the repository root, on Node.js 22 or newer):
 
 ```powershell
-Copy-Item wrangler.local.example.toml wrangler.local.toml
+if (-not (Test-Path wrangler.local.toml)) {
+  Copy-Item wrangler.local.example.toml wrangler.local.toml
+}
 npm install --no-save --package-lock=false wrangler@4
-Set-Content .dev.vars 'SETUP_SECRET="Local-Demo-Setup-Secret-2026-Change-Me"'
+
+# Preserve existing Google/local values in .dev.vars; replace only SETUP_SECRET.
+$varsPath = ".dev.vars"
+$existingVars = if (Test-Path $varsPath) { Get-Content $varsPath -Raw } else { "" }
+$setupLine = 'SETUP_SECRET="Local-Demo-Setup-Secret-2026-Change-Me"'
+if ($existingVars -match '(?m)^SETUP_SECRET=.*
+
+Leave that terminal running. The local config uses a separate local D1 database and has no remote database ID. Keep `wrangler.local.toml` and `.dev.vars` uncommitted.
+
+**Terminal 2 — initialize the disposable demo admin and verify the account flow**:
+
+```powershell
+$env:LOCAL_API_URL = "http://127.0.0.1:8787"
+$env:LOCAL_SETUP_SECRET = "Local-Demo-Setup-Secret-2026-Change-Me"
+$env:LOCAL_ADMIN_USERNAME = "demo-admin"
+$env:LOCAL_ADMIN_EMAIL = "demo-admin@example.test"
+$env:LOCAL_ADMIN_PASSWORD = "Local-Demo-Admin-Password-123!"
+npm run smoke:local
+```
+
+The smoke script prints each successful step. It verifies first-admin setup (or checks the existing demo admin on a repeat run), admin login, student creation, temporary-password login, forced password change, successful re-login, rejection of the old temporary password, and disabling the generated test student.
+
+**Terminal 3 — serve only public website files (never serve the repository root)**:
+
+```powershell
+$demoSite = Join-Path $env:TEMP "class-xii-c-community-static"
+New-Item -ItemType Directory -Force $demoSite | Out-Null
+Copy-Item community.html,community.js,styles.css,index.html,gallery.html,script.js,sw.js -Destination $demoSite
+foreach ($dir in @("images","gallery","games","vimages")) {
+  if (Test-Path $dir) { Copy-Item $dir -Destination $demoSite -Recurse -Force }
+}
+python -m http.server 8000 --bind 127.0.0.1 --directory $demoSite
+```
+
+Open [http://127.0.0.1:8000/community.html](http://127.0.0.1:8000/community.html). Sign in to the admin desk with the disposable demo-admin credentials above. Create a separate demo student from the admin desk, then test the student login and required temporary-password change. You can also publish an announcement and confirm it appears in the public list; both use the local D1 database. Stop the local Worker and static server with Ctrl+C when finished. The temporary static directory contains only the selected public site files; it does not contain `.dev.vars`, local credentials, backend code, or repository configuration.
+
+**One-command launcher:** the feature branch includes `npm run demo:local`. It creates/reuses ignored disposable admin credentials, migrates only Wrangler's local D1, starts the Worker, copies only `community.html`, `community.js`, and `styles.css` into a unique temporary directory, and serves that directory on loopback. It does not serve repository-root secrets/config. The launcher has not been executed end-to-end on a Windows workstation as part of this review. Exact-head CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369) parses the PowerShell script on a Windows runner; the separate main job verifies the Worker/account flow against local D1. These checks do not claim the launcher itself was executed end-to-end.
+
+**Known local-demo limits:** the real Google Drive upload/read/delete check is opt-in and will fail closed without owner-configured Google OAuth credentials and a dedicated test folder. Do not treat a successful account-flow smoke test as proof of Drive access or Cloudflare staging. The published site remains disconnected until a verified, approved Worker URL is configured.
+
+- [x] The documented local D1 account-flow smoke passed in Actions run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369) using Wrangler's isolated local D1 and `npm run smoke:local`. The run verified setup/admin login/member creation/temporary-password gate/password change/relogin/old-password rejection and test-account disabling. This is not a deployed staging test and does not verify the owner's workstation.
+- [ ] Record real Google Drive verification separately. The CI smoke test deliberately skipped external Drive access; health and media operations remain fail-closed until authorized OAuth credentials and folder access are configured.
+- [ ] Only after explicit owner approval, prepare isolated staging D1 and a dedicated Drive folder/account. Configure the Worker secrets server-side and set the exact approved static-site origin in `ALLOWED_ORIGIN`.
+- [ ] Set the frontend `community-api-base` meta value only to a verified Worker HTTPS origin after staging checks. Do not guess the URL or publish localhost.
+- [ ] Verify staging health, setup, admin login, member creation, temporary-password gate, password change, invalid credentials, disable/re-enable, session revocation, upload/read/delete, CORS, request limits, rate limiting, and dependency-failure behavior.
+- [ ] Verify the Cron Trigger is actually configured and runs the cleanup handler; a TOML declaration alone is not deployment evidence.
+- [ ] Configure and verify edge-level rate limiting in staging. The app's tests do not prove real D1 concurrency or deployed edge controls.
+- [ ] Do not deploy, merge, initialize accounts, create/rotate credentials, run remote migrations, or provision paid resources without the owner's explicit approval.
+
+## 3. D1 inventory and migration safety
+
+No live D1 database was inspected. Before planning a migration, identify the exact database and environment, obtain a read-only schema/migration-history inventory, and confirm whether the target is empty or contains existing data.
+
+`backend/migrations/0001_initial.sql` is the initial schema for a **new empty D1 database**. It is not a migration for an existing database. `CREATE TABLE IF NOT EXISTS` does not reconcile existing table columns or constraints with the Worker’s expectations. Do not apply `backend/schema.sql` blindly to a live database.
+
+Before any approved migration:
+
+1. Confirm the exact target D1 name/ID and whether it is staging or production.
+2. Inspect `sqlite_master`, table columns, indexes, unique constraints, foreign keys, migration history, and row counts without exporting unnecessary personal data into review comments.
+3. Create an access-controlled backup/export and verify it can be restored; rehearse recovery against a non-production copy.
+4. Design an ordered, forward-only migration from the observed schema, preserving existing rows and relationships. Resolve duplicate usernames/emails and invalid required fields before applying uniqueness/foreign-key constraints.
+5. Apply the reviewed migration to isolated staging, verify schema and row counts, and test the Worker against it.
+6. Obtain explicit owner approval for any production migration. A D1 backup does not back up Drive files; media reconciliation and removal procedures must be documented separately.
+
+## 4. Security and operational notes
+
+- Admin setup is intentionally CLI/trusted-tool only. `X-Setup-Secret` must remain out of browser CORS and frontend state. Rotate/remove `SETUP_SECRET` immediately after successful initialization.
+- Passwords are hashed with PBKDF2-SHA-256 and per-password salts; session bearer tokens are stored as hashes. Account lifecycle and forced-password-change paths have mock regression tests.
+- Layered application throttling uses a 100-attempt/15-minute IP-and-role ceiling and a 10-attempt/15-minute per-account bucket. This reduces collateral lockout behind shared school Wi-Fi but means someone who knows a username can intentionally trigger temporary account lockout. Confirm the trade-off and add monitoring/edge limits before launch.
+- `GET /api/health` is currently unauthenticated and performs a D1 check plus a Google Drive folder API check (including OAuth refresh when needed). Repeated requests can consume provider quota and expose storage readiness. Before public staging, decide whether detailed health should be admin-only or protected by explicit edge/app throttling, and keep any public liveness response cheap.
+- Request bodies are bounded by streamed byte counts, and allowed media types have basic signature checks. These checks are not full media decoding or malware scanning.
+- Push delivery is not implemented; the API deliberately reports it unavailable.
+- The service-worker navigation tests constrain notification-click navigation to the archive origin, but that does not implement push delivery or prove deployment configuration.
+
+## 5. Release checklist
+
+- [x] Exact-head automated CI passed at `446c68b3e335bd8384b3fdcfd3430148ad8e7763`: run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369), 71/71 automated tests plus syntax, DOM, schema/migration, and Wrangler template checks.
+- [x] Local D1 smoke script passed in CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369); real Google Drive remains unverified.
+- [ ] Verify real Google OAuth and Drive folder access using a dedicated test account/folder.
+- [ ] Resolve public-media visibility and class-photo consent/removal policy.
+- [ ] Select and implement an owner-approved aggregate upload quota.
+- [ ] Inventory the target D1, verify backup/restore, and review a migration matched to the observed schema.
+- [ ] Verify staging end-to-end with isolated D1 and Drive resources, exact CORS/API origin, Cron Trigger, and edge rate limits.
+- [ ] Obtain explicit owner approval before merge/deployment or any production action.
+
+**Current decision: BLOCKED pending the unchecked evidence and owner decisions above.** A green automated suite and isolated local D1 smoke are useful progress, but they are not proof of real Google Drive access, Cloudflare staging readiness, or permission to launch.
+) {
+  $existingVars = [regex]::Replace($existingVars, '(?m)^SETUP_SECRET=.*
+
+Leave that terminal running. The local config uses a separate local D1 database and has no remote database ID. Keep `wrangler.local.toml` and `.dev.vars` uncommitted.
+
+**Terminal 2 — initialize the disposable demo admin and verify the account flow**:
+
+```powershell
+$env:LOCAL_API_URL = "http://127.0.0.1:8787"
+$env:LOCAL_SETUP_SECRET = "Local-Demo-Setup-Secret-2026-Change-Me"
+$env:LOCAL_ADMIN_USERNAME = "demo-admin"
+$env:LOCAL_ADMIN_EMAIL = "demo-admin@example.test"
+$env:LOCAL_ADMIN_PASSWORD = "Local-Demo-Admin-Password-123!"
+npm run smoke:local
+```
+
+The smoke script prints each successful step. It verifies first-admin setup (or checks the existing demo admin on a repeat run), admin login, student creation, temporary-password login, forced password change, successful re-login, rejection of the old temporary password, and disabling the generated test student.
+
+**Terminal 3 — serve only public website files (never serve the repository root)**:
+
+```powershell
+$demoSite = Join-Path $env:TEMP "class-xii-c-community-static"
+New-Item -ItemType Directory -Force $demoSite | Out-Null
+Copy-Item community.html,community.js,styles.css,index.html,gallery.html,script.js,sw.js -Destination $demoSite
+foreach ($dir in @("images","gallery","games","vimages")) {
+  if (Test-Path $dir) { Copy-Item $dir -Destination $demoSite -Recurse -Force }
+}
+python -m http.server 8000 --bind 127.0.0.1 --directory $demoSite
+```
+
+Open [http://127.0.0.1:8000/community.html](http://127.0.0.1:8000/community.html). Sign in to the admin desk with the disposable demo-admin credentials above. Create a separate demo student from the admin desk, then test the student login and required temporary-password change. You can also publish an announcement and confirm it appears in the public list; both use the local D1 database. Stop the local Worker and static server with Ctrl+C when finished. The temporary static directory contains only the selected public site files; it does not contain `.dev.vars`, local credentials, backend code, or repository configuration.
+
+**One-command launcher:** the feature branch includes `npm run demo:local`. It creates/reuses ignored disposable admin credentials, migrates only Wrangler's local D1, starts the Worker, copies only `community.html`, `community.js`, and `styles.css` into a unique temporary directory, and serves that directory on loopback. It does not serve repository-root secrets/config. The launcher has not been executed end-to-end on a Windows workstation as part of this review. Exact-head CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369) parses the PowerShell script on a Windows runner; the separate main job verifies the Worker/account flow against local D1. These checks do not claim the launcher itself was executed end-to-end.
+
+**Known local-demo limits:** the real Google Drive upload/read/delete check is opt-in and will fail closed without owner-configured Google OAuth credentials and a dedicated test folder. Do not treat a successful account-flow smoke test as proof of Drive access or Cloudflare staging. The published site remains disconnected until a verified, approved Worker URL is configured.
+
+- [x] The documented local D1 account-flow smoke passed in Actions run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369) using Wrangler's isolated local D1 and `npm run smoke:local`. The run verified setup/admin login/member creation/temporary-password gate/password change/relogin/old-password rejection and test-account disabling. This is not a deployed staging test and does not verify the owner's workstation.
+- [ ] Record real Google Drive verification separately. The CI smoke test deliberately skipped external Drive access; health and media operations remain fail-closed until authorized OAuth credentials and folder access are configured.
+- [ ] Only after explicit owner approval, prepare isolated staging D1 and a dedicated Drive folder/account. Configure the Worker secrets server-side and set the exact approved static-site origin in `ALLOWED_ORIGIN`.
+- [ ] Set the frontend `community-api-base` meta value only to a verified Worker HTTPS origin after staging checks. Do not guess the URL or publish localhost.
+- [ ] Verify staging health, setup, admin login, member creation, temporary-password gate, password change, invalid credentials, disable/re-enable, session revocation, upload/read/delete, CORS, request limits, rate limiting, and dependency-failure behavior.
+- [ ] Verify the Cron Trigger is actually configured and runs the cleanup handler; a TOML declaration alone is not deployment evidence.
+- [ ] Configure and verify edge-level rate limiting in staging. The app's tests do not prove real D1 concurrency or deployed edge controls.
+- [ ] Do not deploy, merge, initialize accounts, create/rotate credentials, run remote migrations, or provision paid resources without the owner's explicit approval.
+
+## 3. D1 inventory and migration safety
+
+No live D1 database was inspected. Before planning a migration, identify the exact database and environment, obtain a read-only schema/migration-history inventory, and confirm whether the target is empty or contains existing data.
+
+`backend/migrations/0001_initial.sql` is the initial schema for a **new empty D1 database**. It is not a migration for an existing database. `CREATE TABLE IF NOT EXISTS` does not reconcile existing table columns or constraints with the Worker’s expectations. Do not apply `backend/schema.sql` blindly to a live database.
+
+Before any approved migration:
+
+1. Confirm the exact target D1 name/ID and whether it is staging or production.
+2. Inspect `sqlite_master`, table columns, indexes, unique constraints, foreign keys, migration history, and row counts without exporting unnecessary personal data into review comments.
+3. Create an access-controlled backup/export and verify it can be restored; rehearse recovery against a non-production copy.
+4. Design an ordered, forward-only migration from the observed schema, preserving existing rows and relationships. Resolve duplicate usernames/emails and invalid required fields before applying uniqueness/foreign-key constraints.
+5. Apply the reviewed migration to isolated staging, verify schema and row counts, and test the Worker against it.
+6. Obtain explicit owner approval for any production migration. A D1 backup does not back up Drive files; media reconciliation and removal procedures must be documented separately.
+
+## 4. Security and operational notes
+
+- Admin setup is intentionally CLI/trusted-tool only. `X-Setup-Secret` must remain out of browser CORS and frontend state. Rotate/remove `SETUP_SECRET` immediately after successful initialization.
+- Passwords are hashed with PBKDF2-SHA-256 and per-password salts; session bearer tokens are stored as hashes. Account lifecycle and forced-password-change paths have mock regression tests.
+- Layered application throttling uses a 100-attempt/15-minute IP-and-role ceiling and a 10-attempt/15-minute per-account bucket. This reduces collateral lockout behind shared school Wi-Fi but means someone who knows a username can intentionally trigger temporary account lockout. Confirm the trade-off and add monitoring/edge limits before launch.
+- `GET /api/health` is currently unauthenticated and performs a D1 check plus a Google Drive folder API check (including OAuth refresh when needed). Repeated requests can consume provider quota and expose storage readiness. Before public staging, decide whether detailed health should be admin-only or protected by explicit edge/app throttling, and keep any public liveness response cheap.
+- Request bodies are bounded by streamed byte counts, and allowed media types have basic signature checks. These checks are not full media decoding or malware scanning.
+- Push delivery is not implemented; the API deliberately reports it unavailable.
+- The service-worker navigation tests constrain notification-click navigation to the archive origin, but that does not implement push delivery or prove deployment configuration.
+
+## 5. Release checklist
+
+- [x] Exact-head automated CI passed at `446c68b3e335bd8384b3fdcfd3430148ad8e7763`: run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369), 71/71 automated tests plus syntax, DOM, schema/migration, and Wrangler template checks.
+- [x] Local D1 smoke script passed in CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369); real Google Drive remains unverified.
+- [ ] Verify real Google OAuth and Drive folder access using a dedicated test account/folder.
+- [ ] Resolve public-media visibility and class-photo consent/removal policy.
+- [ ] Select and implement an owner-approved aggregate upload quota.
+- [ ] Inventory the target D1, verify backup/restore, and review a migration matched to the observed schema.
+- [ ] Verify staging end-to-end with isolated D1 and Drive resources, exact CORS/API origin, Cron Trigger, and edge rate limits.
+- [ ] Obtain explicit owner approval before merge/deployment or any production action.
+
+**Current decision: BLOCKED pending the unchecked evidence and owner decisions above.** A green automated suite and isolated local D1 smoke are useful progress, but they are not proof of real Google Drive access, Cloudflare staging readiness, or permission to launch.
+, [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $setupLine })
+} else {
+  $existingVars = $existingVars.TrimEnd() + [Environment]::NewLine + $setupLine + [Environment]::NewLine
+}
+Set-Content -Path $varsPath -Value $existingVars -Encoding ascii
+
 npx wrangler d1 migrations apply community-hub-local --local --config wrangler.local.toml
 npx wrangler dev --local --config wrangler.local.toml --ip 127.0.0.1 --port 8787
 ```
