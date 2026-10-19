@@ -68,7 +68,7 @@ Use a password manager and do not reuse a school, email, GitHub, or other accoun
 
 ## Privacy, media, and notifications
 
-- Content and media endpoints may make published posts publicly accessible. Before launch, establish a class-photo consent and removal policy and make the actual administrator contact path clear. Do not upload photos/videos without permission or publish sensitive personal information.
+- **Member uploads are published immediately; there is no pre-publication moderation queue.** The public content and media endpoints make these posts accessible to visitors. Before launch, establish a class-photo consent and removal policy, make the administrator contact path clear, and decide whether immediate public posting is appropriate for the class. Do not upload photos/videos without permission or publish sensitive personal information. If the class needs approval before publication, add and test a moderation workflow before deployment.
 - `MEDIA` is a required R2 binding in the current Worker; do not assume Google Drive or another storage provider is integrated.
 - Admin deletion removes the R2 object before deleting the D1 content row so an R2 failure leaves a retryable admin record. D1 and R2 are not transactional together: if R2 succeeds but the D1 delete fails, retry cleanup and monitor/reconcile that residual state. Upload creation also spans two stores: if the D1 metadata insert fails after an R2 put, the Worker attempts compensating R2 deletion. If that cleanup fails too, it logs the unreferenced object key and cleanup error for later reconciliation; the two stores still are not atomic.
 - Push delivery is not implemented. The push API deliberately reports that it is unavailable rather than claiming notifications were sent.
