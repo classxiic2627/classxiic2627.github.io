@@ -28,7 +28,7 @@ npm run check
 npm test
 ```
 
-The dependency-free `package.json` defines the same checks used by CI. GitHub Actions also checks DOM references and validates that `backend/migrations/0001_initial.sql` produces the same schema objects as `backend/schema.sql`. Mock tests do not replace staging tests against a real Worker and database.
+The dependency-free `package.json` defines the same checks used by CI. GitHub Actions also checks DOM references and validates that `backend/migrations/0001_initial.sql` produces the same schema objects as `backend/schema.sql`. The local D1 smoke verifies member denial on admin-only account management, password-change session revocation, issuance of a fresh token on relogin, and session revocation when an account is disabled. Setting `LOCAL_VERIFY_DRIVE=1` adds an authenticated D1/Drive health check before the dedicated-folder upload/read/delete smoke; it is skipped unless real test credentials and a dedicated folder are deliberately configured. Mock tests do not replace staging tests against a real Worker and database.
 
 ## Bindings and configuration
 
