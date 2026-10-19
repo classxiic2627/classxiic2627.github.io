@@ -12,6 +12,7 @@ on:
       - ".gitignore"
       - "backend/**"
       - "tests/**"
+      - "scripts/**"
       - ".github/workflows/community-checks.yml"
   push:
     branches:
@@ -26,6 +27,7 @@ on:
       - ".gitignore"
       - "backend/**"
       - "tests/**"
+      - "scripts/**"
       - ".github/workflows/community-checks.yml"
 
 permissions:
