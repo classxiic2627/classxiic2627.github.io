@@ -17,6 +17,8 @@ The account model is **individual accounts**, not one shared class password:
 
 The account lifecycle and migration are not considered production-ready merely because routes exist. Verify the current branch's tests and CI, review account/session atomicity and first-admin initialization race safety, and inspect the actual target D1 schema before planning any migration. `schema.sql` is a baseline schema, **not proof of a safe migration for an existing database**.
 
+Request bodies are bounded independently of the `Content-Length` header: JSON requests are limited to 1 MiB, and complete multipart upload requests are limited to 16 MiB (15 MiB media plus up to 1 MiB multipart overhead). The Worker counts streamed bytes before JSON or multipart parsing; `Content-Length` is only an early-rejection hint. Tests cover oversized JSON and multipart requests when that header is absent. This application-level guard does not replace checking Cloudflare's deployed request limits and staging behavior.
+
 ## Run local checks
 
 From the repository root with Node.js 22 or newer:
