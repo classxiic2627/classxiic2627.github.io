@@ -20,7 +20,7 @@
     if (adminToken && !adminMustChangePassword) return adminToken;
     return "";
   };
-  const uploadStatusId = () => memberToken && !memberMustChangePassword ? "memberStatus" : "adminStatus";
+  const uploadStatusId = () => "memberStatus";
   const syncUploadForm = () => { $("uploadForm").hidden = !uploadToken(); };
 
   async function api(path, options = {}, token = "") {
