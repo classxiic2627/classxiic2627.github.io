@@ -17,7 +17,7 @@ import { createGoogleDriveMedia } from "./google-drive.js";
  * hashed with PBKDF2-SHA-256; bearer tokens are stored only as SHA-256 hashes.
  * Uploaded media is private in Google Drive and proxied through this Worker.
  */
-const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_UPLOAD_REQUEST_BYTES = MAX_MEDIA_BYTES + 1024 * 1024;
 const SESSION_DEFAULT_SECONDS = 12 * 60 * 60;
@@ -462,7 +462,7 @@ async function handle(request, env) {
     const mediaStore = driveStorage(env);
     // Bound the complete multipart request before parsing it. Content-Length is
     // only an early-rejection hint; the streamed byte count is authoritative.
-    const uploadBody = await readLimitedBody(request, MAX_UPLOAD_REQUEST_BYTES, "Upload request exceeds the 15 MB media limit.");
+    const uploadBody = await readLimitedBody(request, MAX_UPLOAD_REQUEST_BYTES, "Upload request exceeds the 50 MB media limit.");
     const boundedRequest = new Request(request.url, {
       method: request.method,
       headers: request.headers,
@@ -476,7 +476,7 @@ async function handle(request, env) {
     const caption = cleanText(form.get("caption"), 1000, "Caption");
     const file = form.get("media");
     if (!(file instanceof File)) fail("Choose an image or video to upload.");
-    if (file.size < 1 || file.size > MAX_MEDIA_BYTES) fail("Media must be between 1 byte and 15 MB.", 413);
+    if (file.size < 1 || file.size > MAX_MEDIA_BYTES) fail("Media must be between 1 byte and 50 MB.", 413);
     const mime = file.type.toLowerCase();
     const allowed = type === "image" ? ["image/jpeg","image/png","image/webp","image/gif"] :
       type === "video" ? ["video/mp4","video/webm","video/ogg"] : [];
