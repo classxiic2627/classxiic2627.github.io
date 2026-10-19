@@ -1,23 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generateKeyPairSync } from "node:crypto";
 import worker from "../backend/worker.js";
-
-const { privateKey } = generateKeyPairSync("rsa", {
-  modulusLength: 2048,
-  privateKeyEncoding: { type: "pkcs8", format: "pem" },
-  publicKeyEncoding: { type: "spki", format: "pem" }
-});
 
 const origin = "https://classxiic2627.github.io";
 let sequence = 0;
 
-function envFor({ first, run, email } = {}) {
+function envFor({ first, run } = {}) {
   sequence += 1;
   return {
     ALLOWED_ORIGIN: origin,
-    GOOGLE_SERVICE_ACCOUNT_EMAIL: email || `worker-test-${sequence}@example.invalid`,
-    GOOGLE_PRIVATE_KEY: privateKey,
+    GOOGLE_CLIENT_ID: `worker-test-client-${sequence}.apps.googleusercontent.com`,
+    GOOGLE_CLIENT_SECRET: `fake-client-secret-${sequence}`,
+    GOOGLE_REFRESH_TOKEN: `fake-refresh-token-${sequence}`,
     GOOGLE_DRIVE_FOLDER_ID: "folder_test-123",
     DB: {
       prepare(sql) {
@@ -70,7 +64,8 @@ test("health verifies the configured private Drive folder through server-side OA
     if (String(url) === "https://oauth2.googleapis.com/token") {
       tokenRequests += 1;
       assert.equal(options.method, "POST");
-      assert.match(String(options.body), /grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer/);
+      assert.match(String(options.body), /grant_type=refresh_token/);
+      assert.match(String(options.body), /client_secret=fake-client-secret-/);
       return oauthResponse();
     }
     folderRequests += 1;
@@ -184,7 +179,7 @@ test("Drive upload is compensated when the D1 metadata insert fails", async () =
 
   assert.equal(response.status, 500);
   assert.deepEqual(calls, ["upload", "delete"]);
-  assert.doesNotMatch(await response.text(), /unit-test-access-token|BEGIN PRIVATE KEY/);
+  assert.doesNotMatch(await response.text(), /unit-test-access-token|fake-client-secret|fake-refresh-token/);
 });
 
 test("media retrieval proxies Drive bytes and does not expose the Drive API URL", async () => {
@@ -224,5 +219,5 @@ test("OAuth rejection fails closed without returning credentials or token detail
 
   assert.equal(response.status, 503);
   const body = await response.text();
-  assert.doesNotMatch(body, /invalid_grant|sensitive provider detail|BEGIN PRIVATE KEY|unit-test-access-token/);
+  assert.doesNotMatch(body, /invalid_grant|sensitive provider detail|fake-client-secret|fake-refresh-token|unit-test-access-token/);
 });
