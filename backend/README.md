@@ -94,6 +94,19 @@ Prerequisites: Node.js 22+, npm, and Wrangler 4. Start from a clean checkout of 
    ```
 7. Open `http://127.0.0.1:8000/community.html`, sign in as the admin, create a member, sign in as that member, and test an upload. A real upload requires valid Google OAuth refresh credentials and an accessible Drive folder; mocked CI tests do not prove that external account configuration works.
 
+For the real local-D1 account-flow smoke test, start the local Worker and set these PowerShell variables to match the values in `.dev.vars`/your local admin credentials, then run `npm run smoke:local`:
+
+```powershell
+$env:LOCAL_API_URL = "http://127.0.0.1:8787"
+$env:LOCAL_SETUP_SECRET = Read-Host "Local setup secret (same value as .dev.vars)"
+$env:LOCAL_ADMIN_USERNAME = Read-Host "Local admin username"
+$env:LOCAL_ADMIN_EMAIL = Read-Host "Local admin email"
+$env:LOCAL_ADMIN_PASSWORD = Read-Host "Local admin password"
+npm run smoke:local
+```
+
+The script refuses non-local URLs, exercises setup/admin login/member creation/temporary-password change/relogin/old-password rejection, and disables its generated test account. It may be rerun after setup has already completed. It verifies the real local D1 path only if Wrangler is running against the local config; it does **not** verify real Google Drive access.
+
 Use `npm run check` and `npm test` for fast unit/regression checks. The current CI suite uses a fake Google API and fake D1 objects for route tests. A successful local D1 run with mocked Drive is **not** a real Google Drive verification; record separately whether the local D1 demo and the real Drive upload/read/delete path were each verified. Never point these commands at a remote database unless the owner has approved that exact environment.
 
 ## One-time administrator setup
