@@ -484,3 +484,50 @@ test("rejects and removes expired sessions", async () => {
   assert.deepEqual(await response.json(), { error: "Session expired. Please sign in again." });
   assert.ok(statements.some(({ sql }) => sql.includes("DELETE FROM sessions")));
 });
+
+test("records failed current-password checks for throttling", async () => {
+  const statements = [];
+  const passwordEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first: async () => {
+                if (sql.includes("FROM sessions")) return memberSession;
+                if (sql.includes("FROM auth_attempts")) return { n: 0 };
+                if (sql.includes("SELECT password_hash FROM users")) {
+                  return {
+                    password_hash: "AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+                  };
+                }
+                return null;
+              },
+              run: async () => {
+                statements.push({ sql, values });
+                return { success: true };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/account/password", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.50",
+      Authorization: "Bearer " + "g".repeat(64),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      currentPassword: "incorrect-current-password",
+      newPassword: "a-long-enough-test-value"
+    })
+  }), passwordEnv);
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Current password is incorrect." });
+  assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO auth_attempts")));
+});
