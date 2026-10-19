@@ -413,6 +413,41 @@ test("member disable route cannot delete sessions for an administrator ID", asyn
   assert.deepEqual(statements[1].values,[8,8]);
 });
 
+test("successful admin deletion removes R2 media before D1 metadata", async () => {
+  const order = [];
+  const deleteEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql,values,
+              first:async()=>{
+                if (sql.includes("FROM sessions s JOIN users")) return adminSession;
+                if (sql.includes("SELECT media_key FROM content")) return {media_key:"uploads/delete-in-order"};
+                return null;
+              },
+              run:async()=>{order.push("d1-delete");return {success:true,meta:{changes:1}};}
+            };
+          }
+        };
+      }
+    },
+    MEDIA: {
+      ...env.MEDIA,
+      delete:async key=>{assert.equal(key,"uploads/delete-in-order");order.push("r2-delete");}
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/content/delete-in-order", {
+    method:"DELETE",
+    headers:{Origin:origin,Authorization:"Bearer " + "e".repeat(64)}
+  }),deleteEnv);
+  assert.equal(response.status,200);
+  assert.deepEqual(order,["r2-delete","d1-delete"]);
+});
+
 test("R2 delete failure preserves the D1 content row so an admin can retry", async () => {
   const executed = [];
   const deleteEnv = {
