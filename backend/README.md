@@ -41,7 +41,7 @@ The Worker currently expects:
 
 **Resource and migration caution:** Do not create paid resources or change a live database without explicit approval and a verified cost/schema review. Confirm current Cloudflare pricing and account limits before choosing R2. Do not apply `schema.sql` to an existing D1 as if it were a forward migration. Export/inspect the live schema first and prepare a reviewed, forward-only migration.
 
-The health endpoint checks configured storage. A successful local mock test is not evidence that deployed bindings, secrets, migrations, or origin settings are correct.
+The health endpoint checks configured storage. A successful local mock test is not evidence that deployed bindings, secrets, migrations, or origin settings are correct. The frontend's `API_BASE` in `community.js` is intentionally empty right now, so the site is not connected to a deployed Worker. Set it only after an approved deployment and staging test; do not invent a Worker URL.
 
 ## One-time administrator setup
 
