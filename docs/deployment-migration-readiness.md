@@ -111,7 +111,7 @@ Open [http://127.0.0.1:8000/community.html](http://127.0.0.1:8000/community.html
 - [ ] Verify staging health, setup, admin login, member creation, temporary-password gate, password change, invalid credentials, disable/re-enable, session revocation, upload/read/delete, CORS, request limits, rate limiting, and dependency-failure behavior.
 - [ ] Verify the Cron Trigger is actually configured and runs the cleanup handler; a TOML declaration alone is not deployment evidence.
 - [ ] Configure and verify edge-level rate limiting in staging. The app's tests do not prove real D1 concurrency or deployed edge controls.
-- [ ] Do not deploy, merge, initialize accounts, create/rotate credentials, run remote migrations, or provision paid resources without the owner's explicit approval.
+- [ ] Keep staging within no-cost/free-tier resources. If any resource or test could incur charges, stop and obtain separate owner approval before proceeding. Do not merge/deploy, initialize production accounts, create/rotate credentials, or run remote migrations without the appropriate explicit approval.
 
 ## 3. D1 inventory and migration safety
 
