@@ -128,23 +128,62 @@ export function createGoogleDriveMedia(env, fetchImpl = fetch) {
           : ArrayBuffer.isView(body)
             ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
             : new Uint8Array(await new Response(body).arrayBuffer());
-      const boundary = "drive_upload_" + crypto.randomUUID().replace(/-/g, "");
-      const metadata = encoder.encode(
-        "--" + boundary + "\r\n" +
-        "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-        JSON.stringify({ name: String(name).split("/").pop(), mimeType, parents: [folderId] }) +
-        "\r\n--" + boundary + "\r\n" +
-        "Content-Type: " + mimeType + "\r\n\r\n"
-      );
-      const closing = encoder.encode("\r\n--" + boundary + "--");
-      const payload = concatBytes([metadata, fileBytes, closing]);
-      const response = await driveRequest(
+      if (!fileBytes.byteLength) providerError("Media upload cannot be empty.", 400);
+
+      // Drive documents multipart uploads for files up to 5 MB; larger uploads
+      // must use the resumable protocol. Use it for every size so the 50 MiB
+      // class-video limit follows one consistent, supported path.
+      const metadata = {
+        name: String(name).split("/").pop(),
+        mimeType,
+        parents: [folderId]
+      };
+      const startResponse = await driveRequest(
         env,
-        DRIVE_UPLOAD + "?uploadType=multipart&fields=id,name,mimeType,size",
-        { method: "POST", headers: { "Content-Type": "multipart/related; boundary=" + boundary }, body: payload },
+        DRIVE_UPLOAD + "?uploadType=resumable&fields=id,name,mimeType,size",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=UTF-8",
+            "X-Upload-Content-Type": mimeType,
+            "X-Upload-Content-Length": String(fileBytes.byteLength)
+          },
+          body: JSON.stringify(metadata)
+        },
         fetchImpl
       );
-      const result = await response.json().catch(() => null);
+      const location = startResponse.headers.get("Location");
+      let sessionUrl;
+      try { sessionUrl = new URL(location); }
+      catch { providerError("Google Drive did not return a valid upload session."); }
+      // Never forward the OAuth bearer token to an untrusted Location URL.
+      if (sessionUrl.protocol !== "https:" ||
+          sessionUrl.origin !== new URL(DRIVE_UPLOAD).origin ||
+          !sessionUrl.pathname.startsWith("/upload/drive/v3/files")) {
+        providerError("Google Drive returned an invalid upload session URL.");
+      }
+
+      const uploadResponse = await driveRequest(
+        env,
+        sessionUrl.href,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": mimeType,
+            "Content-Length": String(fileBytes.byteLength),
+            "Content-Range": "bytes 0-" + (fileBytes.byteLength - 1) + "/" + fileBytes.byteLength
+          },
+          body: fileBytes
+        },
+        fetchImpl,
+        [308]
+      );
+      if (uploadResponse.status === 308) {
+        // A partial/incomplete session has no final file ID to commit to D1.
+        // Fail closed rather than claiming the upload succeeded; the user can retry.
+        providerError("Google Drive upload did not complete. Please retry.", 503);
+      }
+      const result = await uploadResponse.json().catch(() => null);
       if (!result || !validDriveId(result.id) || (result.mimeType && result.mimeType !== mimeType)) {
         providerError("Google Drive returned an invalid upload response.");
       }
@@ -155,7 +194,6 @@ export function createGoogleDriveMedia(env, fetchImpl = fetch) {
         httpMetadata: { contentType: result.mimeType || mimeType }
       };
     },
-
     async get(fileId) {
       if (!validDriveId(fileId)) return null;
       const response = await driveRequest(
