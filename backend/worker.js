@@ -132,6 +132,29 @@ async function readJson(request) {
   const bytes = await readLimitedBody(request, MAX_JSON_BYTES, "Request body is too large.");
   try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { fail("Invalid JSON."); }
 }
+async function matchesMediaSignature(file, mime) {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  const ascii = (start, end) => String.fromCharCode(...bytes.slice(start, end));
+  switch (mime) {
+    case "image/jpeg":
+      return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    case "image/png":
+      return bytes.length >= 8 && bytes[0] === 0x89 && ascii(1, 4) === "PNG" &&
+        bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a;
+    case "image/gif":
+      return ascii(0, 6) === "GIF87a" || ascii(0, 6) === "GIF89a";
+    case "image/webp":
+      return ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP";
+    case "video/mp4":
+      return ascii(4, 8) === "ftyp";
+    case "video/webm":
+      return bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+    case "video/ogg":
+      return ascii(0, 4) === "OggS";
+    default:
+      return false;
+  }
+}
 async function auth(request, env, requiredRole = null) {
   const header = request.headers.get("Authorization") || "";
   const match = header.match(/^Bearer ([A-Za-z0-9_-]+)$/);
@@ -398,6 +421,7 @@ async function handle(request, env) {
     const allowed = type === "image" ? ["image/jpeg","image/png","image/webp","image/gif"] :
       type === "video" ? ["video/mp4","video/webm","video/ogg"] : [];
     if (!allowed.includes(mime)) fail("File type does not match an allowed image/video type.");
+    if (!(await matchesMediaSignature(file, mime))) fail("File contents do not match the selected media type.", 415);
     const itemId = id();
     const key = "uploads/" + itemId;
     await env.MEDIA.put(key, file.stream(), {httpMetadata:{contentType:mime, cacheControl:"private, no-store"}});
