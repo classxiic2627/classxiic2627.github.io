@@ -42,6 +42,13 @@ function randomBytes(size = 32) { const bytes = new Uint8Array(size); crypto.get
 function toB64(bytes) { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); }
 function fromB64(value) { return Uint8Array.from(atob(value), c => c.charCodeAt(0)); }
 async function digest(value) { return toB64(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value)))); }
+function constantTimeEqual(left, right) {
+  const a = encoder.encode(left), b = encoder.encode(right);
+  let diff = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let i = 0; i < length; i++) diff |= (a[i] || 0) ^ (b[i] || 0);
+  return diff === 0;
+}
 async function passwordHash(password, salt = randomBytes(16)) {
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits({name:"PBKDF2", hash:"SHA-256", salt, iterations:PBKDF2_ITERATIONS}, key, 256);
@@ -148,7 +155,7 @@ async function handle(request, env) {
     const attemptKey = await rateLimitKey(request, env, "setup");
     if (!env.SETUP_SECRET) fail("Initial setup is disabled until SETUP_SECRET is configured.", 503);
     const supplied = request.headers.get("X-Setup-Secret") || "";
-    if (supplied.length < 16 || !(await digest(supplied) === await digest(env.SETUP_SECRET))) {
+    if (supplied.length < 16 || !constantTimeEqual(await digest(supplied), await digest(env.SETUP_SECRET))) {
       await recordFailedAttempt(env, attemptKey);
       fail("Not authorized.", 401);
     }
