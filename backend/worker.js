@@ -302,6 +302,7 @@ async function handle(request, env) {
   if (request.method === "POST" && path === "/api/admin/announcements") {
     const user = await auth(request, env, "admin"); await requireChangedPassword(user);
     const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
     const title = cleanText(body.title, 120, "Title", true);
     const announcement = cleanText(body.body, 3000, "Announcement", true);
     const announcementId = id();
