@@ -94,6 +94,24 @@ jobs:
           if schema_objects(connection) != schema_objects(migration_connection):
               raise SystemExit("Initial D1 migration does not match backend/schema.sql.")
 
+          reservation_sql = (
+              "INSERT INTO auth_attempts(key_hash,attempted_at) "
+              "SELECT ?,? WHERE (SELECT COUNT(*) FROM auth_attempts "
+              "WHERE key_hash=? AND attempted_at>?) < ?"
+          )
+          window_now = 2_000_000_000
+          for _ in range(10):
+              inserted = connection.execute(
+                  reservation_sql, ("rate-test", window_now, "rate-test", window_now - 900, 10)
+              )
+              if inserted.rowcount != 1:
+                  raise SystemExit("Atomic auth reservation blocked an attempt below the configured threshold.")
+          blocked = connection.execute(
+              reservation_sql, ("rate-test", window_now, "rate-test", window_now - 900, 10)
+          )
+          if blocked.rowcount != 0:
+              raise SystemExit("Atomic auth reservation admitted an attempt at the configured threshold.")
+
           expected = {"users", "sessions", "content", "announcements", "push_subscriptions", "auth_attempts"}
           actual = {
               row[0] for row in connection.execute(
