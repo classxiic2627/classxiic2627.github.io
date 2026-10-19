@@ -272,7 +272,7 @@ test("session revocation requires a member target and deletes that user's sessio
           bind(...values) {
             return {
               sql,values,
-              first:async()=>({id:42}),
+              first:async()=>sql.includes("FROM sessions") ? adminSession : {id:42},
               run:async()=>{statements.push({sql,values});return {success:true,meta:{changes:1}};}
             };
           }
