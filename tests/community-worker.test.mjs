@@ -5,8 +5,14 @@ import worker from "../backend/worker.js";
 const origin = "https://classxiic2627.github.io";
 const env = {
   ALLOWED_ORIGIN: origin,
-  DB: {},
-  MEDIA: {}
+  DB: {
+    prepare() {
+      return { first: async () => ({ ok: 1 }) };
+    }
+  },
+  MEDIA: {
+    head: async () => null
+  }
 };
 
 function request(path, { method = "GET", headers = {} } = {}) {
