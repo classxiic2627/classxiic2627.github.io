@@ -3,9 +3,9 @@
  *
  * Required bindings/configuration:
  *   DB: Cloudflare D1 database
- *   GOOGLE_CLIENT_ID: dedicated Google Google account email
- *   GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN: service-account private key (Worker secret)
- *   GOOGLE_DRIVE_FOLDER_ID: dedicated Drive folder shared with the Google account
+ *   GOOGLE_CLIENT_ID: OAuth client ID
+ *   GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN: OAuth secrets (server-side only)
+ *   GOOGLE_DRIVE_FOLDER_ID: dedicated Drive folder accessible to the authorized Google account
  * Required secrets/vars:
  *   SETUP_SECRET (secret; long random value, used once to initialize accounts)
  *   ALLOWED_ORIGIN (exact site origin)
@@ -13,6 +13,7 @@
  *
  * This API never ships credentials to the browser. Passwords are salted and
  * hashed with PBKDF2-SHA-256; bearer tokens are stored only as SHA-256 hashes.
+ * Uploaded media is private in Google Drive and proxied through this Worker.
  */
 const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
 const MAX_JSON_BYTES = 1024 * 1024;
@@ -381,7 +382,7 @@ async function handle(request, env) {
   if (request.method === "GET" && path === "/api/health") {
     try {
       await env.DB.prepare("SELECT 1 AS ok").first();
-      await checkGoogleDriveFolder(env);
+      await checkGoogleDriveFolder(env, env.__googleFetch || fetch);
     } catch (error) {
       if (Number(error?.status) === 503) throw error;
       fail("Storage health check failed.", 503);
@@ -579,12 +580,12 @@ async function handle(request, env) {
     const itemId = id();
     let driveFileId = null;
     try {
-      driveFileId = await uploadGoogleDriveFile(env, file, mime, itemId);
+      driveFileId = await uploadGoogleDriveFile(env, file, mime, itemId, env.__googleFetch || fetch);
       await env.DB.prepare("INSERT INTO content(id,user_id,type,title,caption,media_key,media_mime,media_size) VALUES(?,?,?,?,?,?,?,?)")
         .bind(itemId, user.id, type, title, caption, driveFileId, mime, file.size).run();
     } catch (error) {
       if (driveFileId) {
-        try { await deleteGoogleDriveFile(env, driveFileId); }
+        try { await deleteGoogleDriveFile(env, driveFileId, env.__googleFetch || fetch); }
         catch (cleanupError) {
           console.error("Failed to clean up unreferenced Google Drive file", {itemId, error:String(cleanupError)});
         }
@@ -597,7 +598,7 @@ async function handle(request, env) {
     const itemId = decodeURIComponent(path.slice("/api/media/".length));
     const row = await env.DB.prepare("SELECT media_key,media_mime,media_size FROM content WHERE id=?").bind(itemId).first();
     if (!row) fail("Media not found.", 404);
-    const object = await downloadGoogleDriveFile(env, row.media_key);
+    const object = await downloadGoogleDriveFile(env, row.media_key, env.__googleFetch || fetch);
     if (object.status === 404) fail("Media not found.", 404);
     const headers = new Headers({"Content-Type":row.media_mime,"X-Content-Type-Options":"nosniff","Cache-Control":"private, max-age=60","Content-Length":String(row.media_size)});
     if (env.ALLOWED_ORIGIN) for (const [key, value] of Object.entries(corsHeaders(env.ALLOWED_ORIGIN))) headers.set(key, value);
@@ -619,7 +620,7 @@ async function handle(request, env) {
     // Google Drive and D1 cannot share a transaction. Delete the file first so a
     // Drive failure leaves the metadata row available for an admin retry. Drive
     // deletion is idempotent here: an already-missing file can still be reconciled.
-    await deleteGoogleDriveFile(env, row.media_key);
+    await deleteGoogleDriveFile(env, row.media_key, env.__googleFetch || fetch);
     await env.DB.prepare("DELETE FROM content WHERE id=?").bind(itemId).run();
     return json({ok:true}, 200, env.ALLOWED_ORIGIN);
   }
