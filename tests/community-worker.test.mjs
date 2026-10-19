@@ -1315,6 +1315,40 @@ test("rejects uploads whose bytes do not match their declared image/video MIME t
   assert.equal(puts, 0);
 });
 
+test("accepts a PNG upload with a matching file signature", async () => {
+  const pngBytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4J8AAAAASUVORK5CYII=",
+    "base64"
+  );
+  const form = new FormData();
+  form.set("type", "image");
+  form.set("title", "Valid PNG signature");
+  form.set("caption", "");
+  form.set("media", new Blob([pngBytes], { type: "image/png" }), "pixel.png");
+  let storedKey = null;
+  const mediaEnv = {
+    ...authenticatedEnv(memberSession),
+    MEDIA: {
+      put: async (key, _body, options) => {
+        storedKey = key;
+        assert.equal(options.httpMetadata.contentType, "image/png");
+      },
+      delete: async () => {}
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/content", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "t".repeat(64)
+    },
+    body: form
+  }), mediaEnv);
+  assert.equal(response.status, 201);
+  assert.match(storedKey, /^uploads\//);
+  assert.ok((await response.json()).id);
+});
+
 test("successful member login creates a hashed, expiring session", async () => {
   const statements = [];
   const user = {
