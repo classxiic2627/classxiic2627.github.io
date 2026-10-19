@@ -160,7 +160,7 @@ Use a password manager and do not reuse a school, email, GitHub, or other accoun
 - [ ] Verify member lifecycle routes cannot mutate admin accounts; if multi-admin account management is added later, implement and test last-enabled-admin protection.
 - [ ] Inspect the target D1 schema and review a forward-only migration; do not apply the baseline schema blindly.
 - [ ] Confirm the media storage plan and cost before provisioning anything.
-- [ ] Confirm consent, public visibility, and removal-request handling.
+- [ ] Confirm class-photo consent and removal-request handling. Public visibility is owner-approved: the content, announcement, and media-read routes are intentionally public.
 - [ ] Treat push notifications as unavailable until delivery and failure cases have real tests.
 
 
