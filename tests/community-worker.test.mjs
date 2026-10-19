@@ -809,3 +809,17 @@ test("rejects null announcement payloads as client errors", async () => {
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "Invalid request body." });
 });
+
+test("rejects malformed multipart upload bodies as client errors", async () => {
+  const response = await worker.fetch(new Request("https://api.example.test/api/content", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "n".repeat(64),
+      "Content-Type": "multipart/form-data"
+    },
+    body: "not a valid multipart body"
+  }), authenticatedEnv(memberSession));
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Invalid upload form." });
+});
