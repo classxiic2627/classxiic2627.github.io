@@ -63,15 +63,16 @@
   $("memberLogin").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
-      const data = await api("/api/member/login", {method:"POST", body:JSON.stringify({password:$("memberPassword").value})});
+      const data = await api("/api/member/login", {method:"POST", body:JSON.stringify({username:$("memberUsername").value.trim(), password:$("memberPassword").value})});
       memberToken = data.token;
       memberMustChangePassword = !!data.mustChangePassword;
       $("memberSessionActions").hidden = false;
       $("memberLogin").hidden = true;
+      $("memberUsername").value = "";
       $("memberPassword").value = "";
       $("uploadForm").hidden = memberMustChangePassword;
       status("memberStatus", memberMustChangePassword
-        ? "The shared class upload password needs an administrator reset before uploading. Please contact the class archive administrator."
+        ? "Change your temporary password before uploading."
         : "Signed in. Posts are visible to visitors of the class archive.");
     } catch (error) { status("memberStatus", error.message); }
   });
