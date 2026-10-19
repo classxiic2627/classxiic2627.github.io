@@ -531,3 +531,41 @@ test("records failed current-password checks for throttling", async () => {
   assert.deepEqual(await response.json(), { error: "Current password is incorrect." });
   assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO auth_attempts")));
 });
+
+test("one-time setup refuses to overwrite existing accounts", async () => {
+  const setupSecret = "setup-secret-used-only-in-this-test";
+  let batches = 0;
+  const setupEnv = {
+    ...env,
+    SETUP_SECRET: setupSecret,
+    DB: {
+      prepare(sql) {
+        const first = async () => {
+          if (sql.includes("FROM auth_attempts")) return { n: 0 };
+          if (sql.includes("COUNT(*) AS n FROM users")) return { n: 2 };
+          return null;
+        };
+        return {
+          first,
+          bind() { return { first, run: async () => ({ success: true }) }; }
+        };
+      },
+      async batch() { batches++; }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/setup", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.51",
+      "Content-Type": "application/json",
+      "X-Setup-Secret": setupSecret
+    },
+    body: "{}"
+  }), setupEnv);
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), {
+    error: "Setup has already been completed. Rotate the setup secret and remove it when finished."
+  });
+  assert.equal(batches, 0);
+});
