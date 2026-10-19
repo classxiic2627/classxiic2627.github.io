@@ -761,3 +761,21 @@ test("unknown usernames receive the same login error and count toward throttling
   assert.deepEqual(await response.json(), { error: "Invalid username or password." });
   assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO auth_attempts")));
 });
+
+test("fails closed for browser origins when ALLOWED_ORIGIN is missing", async () => {
+  const unconfiguredEnv = {
+    DB: env.DB,
+    MEDIA: env.MEDIA
+  };
+  const preflight = await worker.fetch(request("/api/content", {
+    method: "OPTIONS",
+    headers: { Origin: "https://untrusted.example" }
+  }), unconfiguredEnv);
+  assert.equal(preflight.status, 403);
+
+  const response = await worker.fetch(request("/api/health", {
+    headers: { Origin: "https://untrusted.example" }
+  }), unconfiguredEnv);
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: "Origin not allowed." });
+});
