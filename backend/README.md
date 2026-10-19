@@ -33,15 +33,15 @@ GitHub Actions also checks DOM references and validates the D1 schema with SQLit
 
 The Worker currently expects:
 
-- `DB`: a Cloudflare D1 binding.
-- `MEDIA`: a Cloudflare R2 bucket binding.
+- `DB`: a Cloudflare D1 binding for account, session, announcement, and content metadata operations.
+- `MEDIA`: a Cloudflare R2 bucket binding for uploads, serving media, deleting media, and a fully healthy storage check. Account management and announcements can run without this binding, but media operations fail closed with `503`; the health endpoint also reports `503` until media storage is configured.
 - `SETUP_SECRET`: a long random Worker secret, used only for one-time setup.
 - `ALLOWED_ORIGIN`: the exact HTTPS origin of the deployed static site, with no trailing slash.
 - Optional `SESSION_TTL_SECONDS`: session lifetime, bounded by the Worker.
 
 **Resource and migration caution:** Do not create paid resources or change a live database without explicit approval and a verified cost/schema review. Confirm current Cloudflare pricing and account limits before choosing R2. Do not apply `schema.sql` to an existing D1 as if it were a forward migration. Export/inspect the live schema first and prepare a reviewed, forward-only migration.
 
-The health endpoint checks configured storage. A successful local mock test is not evidence that deployed bindings, secrets, migrations, or origin settings are correct. The frontend's `API_BASE` in `community.js` is intentionally empty right now, so the site is not connected to a deployed Worker. Set it only after an approved deployment and staging test; do not invent a Worker URL.
+The health endpoint checks both D1 and R2 and returns `503` if either is unavailable. Without R2, database-backed account and announcement routes can still be exercised, but media features remain unavailable. A successful local mock test is not evidence that deployed bindings, secrets, migrations, or origin settings are correct. The frontend's `API_BASE` in `community.js` is intentionally empty right now, so the site is not connected to a deployed Worker. Set it only after an approved deployment and staging test; do not invent a Worker URL.
 
 ## One-time administrator setup
 
