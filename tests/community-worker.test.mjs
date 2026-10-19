@@ -162,3 +162,25 @@ test("throttles login attempts after the configured failure threshold", async ()
     error: "Too many attempts. Please try again in 15 minutes."
   });
 });
+
+test("scheduled cleanup prunes old auth attempts and expired sessions", async () => {
+  const statements = [];
+  const promises = [];
+  const cleanupEnv = {
+    DB: {
+      prepare(sql) {
+        statements.push(sql);
+        return {
+          bind() {
+            return { run: async () => ({ success: true }) };
+          }
+        };
+      }
+    }
+  };
+  await worker.scheduled({}, cleanupEnv, { waitUntil(promise) { promises.push(promise); } });
+  await Promise.all(promises);
+  assert.equal(statements.length, 2);
+  assert.ok(statements.some(sql => sql.includes("DELETE FROM auth_attempts")));
+  assert.ok(statements.some(sql => sql.includes("DELETE FROM sessions")));
+});
