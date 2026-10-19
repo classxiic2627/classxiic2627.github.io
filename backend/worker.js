@@ -17,6 +17,8 @@ const SESSION_DEFAULT_SECONDS = 12 * 60 * 60;
 const PBKDF2_ITERATIONS = 210000;
 const AUTH_WINDOW_SECONDS = 15 * 60;
 const AUTH_MAX_ATTEMPTS = 10;
+const DUMMY_PASSWORD_SALT = "AAAAAAAAAAAAAAAAAAAAAA==";
+const DUMMY_PASSWORD_HASH = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 const encoder = new TextEncoder();
 
 function json(data, status = 200, origin = null) {
@@ -132,11 +134,11 @@ async function login(request, env, role) {
   const user = await env.DB.prepare(
     "SELECT id, username, display_name, role, password_hash, disabled, must_change_password FROM users WHERE username=? AND role=?"
   ).bind(username, role).first();
-  let okay = false;
-  if (user && !user.disabled) {
-    const [salt, hash] = user.password_hash.split("$");
-    if (salt && hash) okay = await verifyPassword(password, salt, hash);
-  }
+  const [storedSalt, storedHash] = (user?.password_hash || "").split("$");
+  const salt = storedSalt && storedHash ? storedSalt : DUMMY_PASSWORD_SALT;
+  const hash = storedSalt && storedHash ? storedHash : DUMMY_PASSWORD_HASH;
+  const passwordMatches = await verifyPassword(password, salt, hash);
+  const okay = !!user && !user.disabled && passwordMatches;
   if (!okay) {
     await recordFailedAttempt(env, attemptKey);
     fail("Invalid username or password.", 401);
