@@ -2,7 +2,7 @@
 
 **Status:** Review-only; not deployment approval  
 **Reviewed branch:** `feature/community-security-foundation`  
-**Reviewed commit:** `2a2dbebbede59fdaa2a0a6cbffc7172b3719509e`  
+**Reviewed commit:** `317b8128537ffc5ca07b0a616a8a2160ac53cf42`  
 **Pull request:** [#1 — Build the Community Hub API and secure upload foundation](https://github.com/classxiic2627/classxiic2627.github.io/pull/1)
 
 ## Executive decision
@@ -13,7 +13,7 @@ This document is an evidence checklist and proposed plan only. It does not autho
 
 ## 1. What is verified in the repository
 
-At reviewed commit `2a2dbebbede59fdaa2a0a6cbffc7172b3719509e` (the latest inspected feature head):
+At reviewed commit `317b8128537ffc5ca07b0a616a8a2160ac53cf42` (the latest inspected feature head):
 
 - `backend/worker.js` implements the Cloudflare Worker API.
 - `backend/schema.sql` defines `users`, `sessions`, `content`, `announcements`, `push_subscriptions`, and `auth_attempts`.
@@ -28,11 +28,11 @@ At reviewed commit `2a2dbebbede59fdaa2a0a6cbffc7172b3719509e` (the latest inspec
 
 ### CI evidence
 
-GitHub Actions run [39272087066](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39272087066) completed successfully for the latest inspected feature head `2a2dbebbede59fdaa2a0a6cbffc7172b3719509e`. The prior inspected head `cef8016e02abbb33431732b9bd990d30c6bd1e60` passed run [39270736537](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39270736537); subsequent commits added media-signature checks and further regression coverage. The earlier `72fbfdd` checkpoint had 52/52 Worker tests plus frontend/Worker syntax, DOM-reference, and migration/schema checks. Treat only the run attached to the exact release SHA as release evidence. Repository-level checks are not a live D1 or deployed Worker/R2 integration test.
+GitHub Actions run [39273373335](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39273373335) completed successfully for the reviewed feature head `317b8128537ffc5ca07b0a616a8a2160ac53cf42`, with **58/58 Worker tests passed**, frontend/Worker syntax, DOM-reference checks, schema/initial-migration parity, atomic reservation SQL threshold checks, and Wrangler template/TOML checks. This head includes streamed request-size enforcement, basic media-signature checks, R2/D1 compensation handling, CLI-only setup CORS, and atomic auth-attempt reservations. Treat only the run attached to the exact release SHA as release evidence. Repository-level checks are not a live D1 or deployed Worker/R2 integration test.
 
 This is evidence of repository-level checks only. It is **not** proof of compatibility with the actual D1 database or a deployed Worker/R2 environment.
 
-PR #1 remains open and unmerged. The latest inspected feature head is `2a2dbebbede59fdaa2a0a6cbffc7172b3719509e`; always retest the exact release commit. CI here validates repository-level checks only, not a real Cloudflare environment.
+PR #1 remains open and unmerged. The latest inspected feature head is `317b8128537ffc5ca07b0a616a8a2160ac53cf42`; always retest the exact release commit. CI here validates repository-level checks only, not a real Cloudflare environment.
 
 ## 2. D1 inventory required before migration design
 
@@ -93,10 +93,10 @@ Adapt these to the actual schema; do not run modifying SQL during inventory.
 - [ ] Set the frontend `API_BASE` to the verified deployed Worker HTTPS origin only after an approved deployment and staging test. Do not guess the URL.
 - [ ] Decide the session TTL; if set, verify it falls within the Worker-enforced bounds.
 - [ ] Confirm HTTPS, CORS preflight, API routes, health behavior, upload limits, public-media behavior, and browser connectivity in staging.
-- [ ] **Keep first-admin setup CLI/trusted-admin-tool only.** The latest feature head `2a2dbebbede59fdaa2a0a6cbffc7172b3719509e` explicitly documents this contract, keeps `X-Setup-Secret` out of browser CORS, and adds regression coverage. Do not add the secret to frontend code. Verify the documented trusted-tool setup flow in an approved staging environment and rotate/remove the secret immediately after initialization.
+- [ ] **Keep first-admin setup CLI/trusted-admin-tool only.** The latest feature head `317b8128537ffc5ca07b0a616a8a2160ac53cf42` explicitly documents this contract, keeps `X-Setup-Secret` out of browser CORS, and adds regression coverage. Do not add the secret to frontend code. Verify the documented trusted-tool setup flow in an approved staging environment and rotate/remove the secret immediately after initialization.
 - [ ] Decide how scheduled cleanup is configured and verify expired sessions and old authentication-attempt records are cleaned up.
 - [ ] Verify deployment permissions, review requirements, monitoring, and a clear owner for incidents and account administration.
-- [ ] **Close the concurrent-auth-throttling gap:** the current Worker reads the failed-attempt count before password verification and records failure afterward in a separate operation. Concurrent bursts can all pass the count check before failures are recorded. Add an atomic reservation/counter design or verify an edge rate-limit control (preferably both), and test the promised concurrent-request behavior before public launch. This finding is posted on PR #1.
+- [x] **Application-level concurrent-auth-throttling race addressed in the reviewed feature head.** The Worker now reserves a slot with one conditional D1 `INSERT ... SELECT` before login/setup/password verification and deletes only that request's reservation after successful verification. A concurrency regression test launches 20 same-IP login failures and verifies 10 reach credential verification while 10 receive `429`; CI also exercises the SQL threshold in SQLite. This is repository/mock evidence, not proof of real D1 concurrency behavior. Keep edge-level rate limiting as defense in depth and verify both controls in staging before public launch.
 - [ ] Confirm current Cloudflare pricing/limits and avoid creating paid resources without explicit approval.
 
 ## 6. Staging acceptance tests
@@ -123,7 +123,8 @@ At minimum test:
 - Ensure temporary passwords are shared privately and are never returned again by the API after account creation/reset.
 - Decide who administers accounts, responds to abuse/removal requests, and handles outages.
 - Consider edge-level rate limiting as defense in depth; application-level auth throttling alone is not the entire operational security plan.
-- **Request-size enforcement and numeric-header fast rejection are now covered by the current feature-branch code and CI.** The Worker counts streamed bytes before parsing JSON/multipart, so the byte counter—not `Content-Length`—is authoritative when the header is absent or untrusted. Commit `e2366381f58ec74d00f88374113f5cc558577a6a` corrected the declared-length regex to `/^\d+$/`, and the dedicated oversized numeric-`Content-Length` regression test passed in Actions run [39270182676](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39270182676) on commit `72fbfdd47e11bd84b7ec20c39d88be86c8540d11` (52/52 Worker tests plus syntax, DOM-reference, and schema/migration checks). The latest inspected head `2a2dbebbede59fdaa2a0a6cbffc7172b3719509e` also has a successful repository workflow, run [39272087066](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39272087066). Cloudflare's platform request-body ceiling is not a substitute for the app's stricter limit; verify current plan limits and behavior in staging. See [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
+- **Request-size and upload-type checks are covered by repository tests.** The Worker counts streamed bytes before parsing JSON/multipart, so the byte counter—not `Content-Length`—is authoritative when the header is absent or untrusted. It also checks basic signatures for allowed JPEG/PNG/WebP/GIF/MP4/WebM/Ogg types instead of trusting the MIME label alone. These signature checks are not full media decoding or malware scanning. Current feature head `317b8128537ffc5ca07b0a616a8a2160ac53cf42` passed Actions run [39273373335](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39273373335) with 58/58 Worker tests. Cloudflare's platform request-body ceiling is not a substitute for the app's stricter limit; verify current plan limits and behavior in staging. See [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
+- **R2/D1 upload compensation remains non-transactional.** If D1 metadata insertion fails after an R2 upload, the Worker attempts to delete the object; if that cleanup also fails, it logs the object key/error for later reconciliation. The compensation path has mock regression coverage only, not a live R2/D1 integration test.
 - **Scheduled cleanup is not configured by source code alone.** The Worker has a `scheduled()` handler for expired sessions and auth-attempt cleanup, and `wrangler.example.toml` proposes a daily Cron Trigger. It will not run until the approved configuration is applied to the deployed Worker. Confirm the trigger exists and verify a cleanup run in staging. Auth still checks session expiry on each request. See [Cloudflare Cron Triggers](https://developers.cloudflare.com/workers/configuration/cron-triggers/).
 
 ## 8. Launch decision record
