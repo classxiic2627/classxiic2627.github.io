@@ -19,7 +19,7 @@ At reviewed feature head `8502f3d7f95138652e2870fc31adb7d12de414ae`:
 - `backend/google-drive.js` is the canonical Google Drive adapter. It uses server-side OAuth refresh-token credentials, keeps Drive files private, proxies file content through the Worker, stores Drive file IDs in D1 metadata, and supports health/upload/read/delete operations.
 - `tests/google-drive-adapter.test.mjs` and `tests/google-drive-delete.test.mjs` exercise the Worker routes with fake Google API responses and mock D1 objects. These are automated contract/regression tests, **not** real Google Drive or live D1 verification.
 - `scripts/local-smoke-test.mjs` and `wrangler.local.example.toml` provide a repeatable local D1 account-flow test. In run [39290703737](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39290703737), CI applied migrations to Wrangler's isolated local D1, started a local Worker, and passed setup, admin login, member creation, temporary-password login, password change, relogin, rejection of the old password, and test-member disablement. **Local D1 account flow is verified in CI.** The optional real Drive upload/read/delete test was skipped because no real credentials/folder were supplied.
-- `community.html` keeps the `community-api-base` meta value blank. The published frontend is therefore **not connected to a deployed Worker**. For easier local demonstration, `community.js` falls back to `http://127.0.0.1:8787` only when served over plain HTTP from `localhost`, `127.0.0.1`, or `[::1]`; the published hostname does not match this fallback.
+- `community.html` keeps the `community-api-base` meta value blank. The published frontend is therefore **not connected to a deployed Worker**. For easier local demonstration, `community.js` falls back to `http://127.0.0.1:8787` only when served over plain HTTP from `127.0.0.1`, matching the local CORS origin; the published hostname does not match this fallback.
 - `scripts/demo-local.ps1` automates the Windows local-demo setup: it creates/uses ignored local-only credentials, applies migrations only to Wrangler local D1, starts the Worker and static server on loopback, and prints the local community page URL. Generated credential files are ignored by Git, and server stdout/stderr logs are separate. The smoke script also attempts to disable its generated test member after a mid-flow assertion failure; exact-head CI verifies the normal success path, not every possible cleanup failure.
 - No approved Google OAuth client/refresh token/folder, deployed staging Worker, or verified staging D1 was supplied or tested in this review. No real Drive upload/read/delete has been demonstrated.
 
@@ -41,6 +41,8 @@ At reviewed feature head `8502f3d7f95138652e2870fc31adb7d12de414ae`:
 #### Run the login + real local D1 demo on Windows
 
 This is a local-only demo of the existing site UI and Worker backed by Wrangler's isolated local D1 database. It does not require a Cloudflare account, remote database, Google credentials, or paid resources. Use disposable demo credentials only.
+
+**Fastest Windows option:** run `npm run demo:local` from the repository root in PowerShell. It creates/reuses ignored local demo credentials, applies migrations to Wrangler's local D1, starts the Worker and static server on loopback, and opens the site. It does not deploy or contact a remote Cloudflare database. Use the manual commands below only if you want to inspect each step.
 
 **Terminal 1 — prepare and start the local API** (from the repository root, on Node.js 22 or newer):
 
