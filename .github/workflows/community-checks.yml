@@ -6,6 +6,7 @@ on:
       - "community.js"
       - "community.html"
       - "backend/**"
+      - "tests/**"
       - ".github/workflows/community-checks.yml"
   push:
     branches:
@@ -15,6 +16,7 @@ on:
       - "community.js"
       - "community.html"
       - "backend/**"
+      - "tests/**"
       - ".github/workflows/community-checks.yml"
 
 permissions:
