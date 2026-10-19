@@ -10,6 +10,18 @@ This is the API for the static site. It is intentionally separate from the publi
 - R2 media storage; 15 MB upload limit and allowlisted MIME types; parameterized SQL; origin allowlisting; no-cache auth responses; IP-keyed throttling for failed login, setup-secret, and password-change verification attempts (10 failures per 15-minute window).
 - Push key discovery endpoint only. Push delivery is intentionally not represented as working until VAPID signing and real delivery tests are implemented.
 
+## Run the local checks
+
+From the repository root with Node.js 22 or newer:
+
+```sh
+node --check community.js
+node --check backend/worker.js
+node --test tests/community-worker.test.mjs
+```
+
+The GitHub Actions workflow also checks that JavaScript DOM references exist, validates the D1 schema with SQLite, and verifies core database constraints. These tests use mock bindings; they do not replace staging tests against a real Cloudflare Worker, D1 database, and R2 bucket.
+
 ## Cloudflare setup
 
 1. Create a D1 database and an R2 bucket in the Cloudflare dashboard.
