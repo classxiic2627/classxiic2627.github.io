@@ -1656,7 +1656,7 @@ test("keeps the 50 MiB upload cap aligned across Worker, browser, UI, and docs",
   const readmeSource = readFileSync(new URL("../backend/README.md", import.meta.url), "utf8");
   assert.match(workerSource, /const MAX_MEDIA_BYTES = 50 \* 1024 \* 1024;/);
   assert.match(workerSource, /const MAX_UPLOAD_REQUEST_BYTES = MAX_MEDIA_BYTES \+ 1024 \* 1024;/);
-  assert.match(workerSource, /Upload request exceeds the 50 MB media limit/);
+  assert.match(workerSource, /Upload request exceeds the 50 MiB media limit/);
   assert.match(clientSource, /file\.size > 50 \* 1024 \* 1024/);
   assert.match(htmlSource, /Maximum file size: 50 MiB/);
   assert.match(htmlSource, /Only the class archive administrator can remove a post/i);
@@ -1669,7 +1669,7 @@ test("keeps the 50 MiB upload cap aligned across Worker, browser, UI, and docs",
   assert.doesNotMatch(readmeSource, /Do not upload photos\/videos without permission/i);
 });
 
-test("rejects multipart uploads over the 50 MB limit from declared length before parsing", async () => {
+test("rejects multipart uploads over the 50 MiB limit from declared length before parsing", async () => {
   const req = new Request("https://api.example.test/api/content", {
     method: "POST",
     headers: {
@@ -1682,7 +1682,7 @@ test("rejects multipart uploads over the 50 MB limit from declared length before
   });
   const response = await worker.fetch(req, authenticatedEnv(memberSession));
   assert.equal(response.status, 413);
-  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 50 MB media limit." });
+  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 50 MiB media limit." });
 });
 
 test("rejects oversized streamed multipart bodies when Content-Length is absent", async () => {
@@ -1711,7 +1711,7 @@ test("rejects oversized streamed multipart bodies when Content-Length is absent"
   assert.equal(req.headers.get("content-length"), null);
   const response = await worker.fetch(req, authenticatedEnv(memberSession));
   assert.equal(response.status, 413);
-  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 50 MB media limit." });
+  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 50 MiB media limit." });
 });
 
 test("rejects malformed multipart upload bodies as client errors", async () => {
