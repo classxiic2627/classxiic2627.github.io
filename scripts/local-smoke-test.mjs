@@ -130,6 +130,11 @@ async function main() {
   assert(oldPassword.response.status === 401, "The old temporary password was not rejected.");
 
   if (process.env.LOCAL_VERIFY_DRIVE === "1") {
+    const health = await api("/api/admin/health", { token: adminToken });
+    assert(health.response.status === 200 && health.data.ok === true && health.data.storage === "google-drive",
+      "Real Google Drive health check failed (HTTP " + health.response.status + ").");
+    console.log("PASS: authenticated D1 and Google Drive readiness check.");
+
     let uploadedItemId = null;
     let driveCleanupFailure = "";
     try {
