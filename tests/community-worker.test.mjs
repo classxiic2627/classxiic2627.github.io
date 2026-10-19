@@ -133,3 +133,32 @@ test("temporary-password accounts cannot upload before changing their password",
     error: "Change your temporary password before continuing."
   });
 });
+
+test("throttles login attempts after the configured failure threshold", async () => {
+  const rateLimitedEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        assert.match(sql, /FROM auth_attempts/);
+        return {
+          bind() {
+            return { first: async () => ({ n: 10 }) };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/member/login", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.42",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ password: "incorrect-password" })
+  }), rateLimitedEnv);
+  assert.equal(response.status, 429);
+  assert.deepEqual(await response.json(), {
+    error: "Too many attempts. Please try again in 15 minutes."
+  });
+});
