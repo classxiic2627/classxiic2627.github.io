@@ -149,7 +149,15 @@ async function handle(request, env) {
   if (!env.DB || !env.MEDIA) fail("Server storage is not configured.", 503);
   const url = new URL(request.url);
   const path = url.pathname;
-  if (request.method === "GET" && path === "/api/health") return json({ok:true, service:"class-archive-api", time:new Date().toISOString()}, 200, env.ALLOWED_ORIGIN);
+  if (request.method === "GET" && path === "/api/health") {
+    try {
+      await env.DB.prepare("SELECT 1 AS ok").first();
+      await env.MEDIA.head("__community_health_check__");
+    } catch {
+      fail("Storage health check failed.", 503);
+    }
+    return json({ok:true, service:"class-archive-api", time:new Date().toISOString()}, 200, env.ALLOWED_ORIGIN);
+  }
 
   if (request.method === "POST" && path === "/api/setup") {
     const attemptKey = await rateLimitKey(request, env, "setup");
