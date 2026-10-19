@@ -623,7 +623,7 @@ test("admin member-password rotation enforces minimum password length", async ()
   }), authenticatedEnv(adminSession));
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {
-    error: "The new class upload password must be at least 12 characters."
+    error: "The new class upload password must be at least 12 characters and cannot be blank."
   });
 });
 
@@ -792,6 +792,6 @@ test("rejects passwords made entirely of whitespace", async () => {
   }), authenticatedEnv(adminSession));
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {
-    error: "The new class upload password must be at least 12 characters."
+    error: "The new class upload password must be at least 12 characters and cannot be blank."
   });
 });
