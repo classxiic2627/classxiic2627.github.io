@@ -8,6 +8,7 @@ const origin = "https://classxiic2627.github.io";
 const driveFolderId = "drive-folder-test";
 function makeGoogleFetch(overrides = {}) {
   let uploadCount = 0;
+  const pendingUploads = new Map();
   return async (input, init = {}) => {
     const url = new URL(typeof input === "string" ? input : input.url);
     const method = init.method || "GET";
@@ -19,15 +20,20 @@ function makeGoogleFetch(overrides = {}) {
       if (overrides.onFolder) return overrides.onFolder({url,init});
       return Response.json({id:driveFolderId,name:"Test uploads",mimeType:"application/vnd.google-apps.folder"});
     }
-    if (url.pathname === "/upload/drive/v3/files" && method === "POST") {
-      const text = new TextDecoder().decode(init.body);
-      const start = text.indexOf("\r\n\r\n") + 4;
-      const end = text.indexOf("\r\n--", start);
-      const metadata = JSON.parse(text.slice(start, end));
+    if (url.pathname === "/upload/drive/v3/files" && method === "POST" && url.searchParams.get("uploadType") === "resumable") {
+      const metadata = JSON.parse(String(init.body));
       uploadCount++;
       const id = overrides.uploadId || ("drive-file-test-" + uploadCount);
+      const sessionId = "test-session-" + uploadCount;
+      pendingUploads.set(sessionId,{metadata,id});
       if (overrides.onUpload) overrides.onUpload({url,init,metadata,id});
-      return Response.json({id,name:metadata.name,mimeType:metadata.mimeType,size:1,parents:metadata.parents});
+      return new Response(null,{status:200,headers:{Location:"https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id="+sessionId}});
+    }
+    if (url.pathname === "/upload/drive/v3/files" && method === "PUT" && url.searchParams.has("upload_id")) {
+      const pending = pendingUploads.get(url.searchParams.get("upload_id"));
+      if (!pending) return new Response("Unknown upload session",{status:404});
+      const size = Number(init.headers?.["Content-Length"] || init.body?.byteLength || 1);
+      return Response.json({id:pending.id,name:pending.metadata.name,mimeType:pending.metadata.mimeType,size,parents:pending.metadata.parents});
     }
     if (url.pathname.startsWith("/drive/v3/files/") && url.searchParams.get("alt") === "media" && method === "GET") {
       if (overrides.onDownload) return overrides.onDownload({url,init});
