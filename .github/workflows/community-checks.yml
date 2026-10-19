@@ -53,7 +53,7 @@ jobs:
           import subprocess
           from pathlib import Path
 
-          tracked = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\\0")
+          tracked = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")
           forbidden = {
               "wrangler.toml",
               "wrangler.local.toml",
