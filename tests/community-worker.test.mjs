@@ -230,6 +230,65 @@ test("member accounts cannot access the admin account-management API", async () 
   assert.deepEqual(await response.json(),{error:"You do not have permission to do that."});
 });
 
+test("admin profile updates normalize username/email and target member accounts only", async () => {
+  const statements = [];
+  const accountEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql,values,
+              first:async()=>adminSession,
+              run:async()=>{statements.push({sql,values});return {success:true,meta:{changes:1}};}
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/users/42/update", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer " + "z".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({username:"New.Student",email:"NEW@EXAMPLE.TEST",displayName:"New Student"})
+  }),accountEnv);
+  assert.equal(response.status,200);
+  const update=statements.find(item=>item.sql.includes("UPDATE users SET username"));
+  assert.ok(update);
+  assert.deepEqual(update.values.slice(0,3),["new.student","new@example.test","New Student"]);
+  assert.match(update.sql,/WHERE id=\? AND role='member'/);
+});
+
+test("session revocation requires a member target and deletes that user's sessions", async () => {
+  const statements = [];
+  const accountEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql,values,
+              first:async()=>({id:42}),
+              run:async()=>{statements.push({sql,values});return {success:true,meta:{changes:1}};}
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/users/42/revoke-sessions", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer " + "q".repeat(64),"Content-Type":"application/json"},
+    body:"{}"
+  }),accountEnv);
+  assert.equal(response.status,200);
+  assert.ok(statements.some(item=>item.sql.includes("DELETE FROM sessions WHERE user_id=?") && item.values[0]===42));
+});
+
 test("disabling a member and revoking their sessions use one atomic D1 batch", async () => {
   let batchStatements = [];
   const accountEnv = {
