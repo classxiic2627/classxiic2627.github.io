@@ -5,6 +5,8 @@ const setupSecret = process.env.LOCAL_SETUP_SECRET;
 const adminUsername = process.env.LOCAL_ADMIN_USERNAME;
 const adminEmail = process.env.LOCAL_ADMIN_EMAIL;
 const adminPassword = process.env.LOCAL_ADMIN_PASSWORD;
+let cleanupAdminToken = null;
+let cleanupMemberId = null;
 
 const parsedBase = new URL(base);
 if (parsedBase.protocol !== "http:" ||
@@ -68,6 +70,7 @@ async function main() {
   assert(adminLogin.response.status === 200 && typeof adminLogin.data.token === "string",
     "Admin login failed (HTTP " + adminLogin.response.status + ").");
   const adminToken = adminLogin.data.token;
+  cleanupAdminToken = adminToken;
   console.log("PASS: admin login.");
 
   const suffix = Date.now().toString(36) + "-" + randomUUID().slice(0, 8);
@@ -83,6 +86,7 @@ async function main() {
   assert(created.response.status === 201 && Number.isSafeInteger(Number(created.data.id)) && Number(created.data.id) > 0,
     "Admin could not create a student account (HTTP " + created.response.status + ").");
   const memberId = Number(created.data.id);
+  cleanupMemberId = memberId;
   console.log("PASS: admin created a student account.");
 
   const memberLogin = await api("/api/member/login", {
@@ -182,11 +186,29 @@ async function main() {
     body: { disabled: true }
   });
   assert(disabled.response.status === 200, "Could not disable the smoke-test account for cleanup.");
+  cleanupMemberId = null;
   console.log("PASS: old temporary password rejected; smoke-test account disabled.");
   console.log("LOCAL ACCOUNT FLOW VERIFIED.");
 }
 
-main().catch(error => {
+main().catch(async error => {
   console.error("LOCAL SMOKE TEST FAILED:", error.message);
+  // Do not leave a generated member enabled if an assertion fails mid-flow.
+  if (cleanupAdminToken && cleanupMemberId) {
+    try {
+      const cleanup = await api("/api/admin/users/" + cleanupMemberId + "/status", {
+        method: "POST",
+        token: cleanupAdminToken,
+        body: { disabled: true }
+      });
+      if (cleanup.response.status === 200) {
+        console.log("CLEANUP: disabled the generated smoke-test account after failure.");
+      } else {
+        console.error("CLEANUP WARNING: could not disable generated account (HTTP " + cleanup.response.status + ").");
+      }
+    } catch (cleanupError) {
+      console.error("CLEANUP WARNING: generated account may remain enabled:", cleanupError.message);
+    }
+  }
   process.exitCode = 1;
 });
