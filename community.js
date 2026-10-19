@@ -161,7 +161,7 @@
       $("uploadForm").reset();
       status(targetStatus, "Published. Push notifications are not active yet.");
       await loadPublicContent();
-    } catch (error) { status("memberStatus", error.message); }
+    } catch (error) { status(targetStatus, error.message); }
   });
 
   $("adminLogin").addEventListener("submit", async (event) => {
