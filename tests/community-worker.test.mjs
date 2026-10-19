@@ -1280,6 +1280,41 @@ test("rejects malformed multipart upload bodies as client errors", async () => {
   assert.deepEqual(await response.json(), { error: "Invalid upload form." });
 });
 
+test("rejects uploads whose bytes do not match their declared image/video MIME type", async () => {
+  const mediaTypes = [
+    "image/jpeg", "image/png", "image/webp", "image/gif",
+    "video/mp4", "video/webm", "video/ogg"
+  ];
+  let puts = 0;
+  const mediaEnv = {
+    ...authenticatedEnv(memberSession),
+    MEDIA: {
+      put: async () => { puts++; },
+      delete: async () => {}
+    }
+  };
+  for (const mime of mediaTypes) {
+    const form = new FormData();
+    form.set("type", mime.startsWith("image/") ? "image" : "video");
+    form.set("title", "Signature test");
+    form.set("caption", "");
+    form.set("media", new Blob(["not a valid media signature"], { type: mime }), "spoofed-upload.bin");
+    const response = await worker.fetch(new Request("https://api.example.test/api/content", {
+      method: "POST",
+      headers: {
+        Origin: origin,
+        Authorization: "Bearer " + "s".repeat(64)
+      },
+      body: form
+    }), mediaEnv);
+    assert.equal(response.status, 415, mime);
+    assert.deepEqual(await response.json(), {
+      error: "File contents do not match the selected media type."
+    });
+  }
+  assert.equal(puts, 0);
+});
+
 test("successful member login creates a hashed, expiring session", async () => {
   const statements = [];
   const user = {
