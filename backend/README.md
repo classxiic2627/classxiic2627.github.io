@@ -1,16 +1,23 @@
 # Class XII C Community Archive API
 
-This is the API for the static site. It is intentionally separate from the public frontend so secrets never go into browser JavaScript or Git.
+This Worker backs the static community site. Secrets stay in Worker configuration and must never be placed in browser JavaScript or committed to Git.
 
-## What is implemented
+## Current API contract
 
-- D1 schema for admin/member accounts, expiring sessions, gallery metadata, announcements, push subscription records and hashed authentication-attempt keys; a daily scheduled cleanup for old attempts and expired sessions.
-- Worker routes for one-time setup, separate member/admin login, logout, admin password change, admin-managed shared member-password rotation, content listing/upload/deletion, announcements, media delivery and a dependency-aware health check.
-- PBKDF2-SHA-256 password hashing (210,000 iterations, per-password salt); random bearer tokens are stored only as SHA-256 hashes.
-- R2 media storage; 15 MB upload limit and allowlisted MIME types; parameterized SQL; origin allowlisting; no-cache auth responses; IP-keyed throttling for failed login, setup-secret, and password-change verification attempts (10 failures per 15-minute window).
-- Push key discovery endpoint only. Push delivery is intentionally not represented as working until VAPID signing and real delivery tests are implemented.
+The account model is **individual accounts**, not one shared class password:
 
-## Run the local checks
+- One-time `POST /api/setup` initializes the first administrator. The JSON body requires `adminUsername`, `adminEmail`, and `adminPassword`; `adminDisplayName` is optional.
+- `POST /api/admin/login` and `POST /api/member/login` accept `{ "username": "...", "password": "..." }`.
+- Public registration is not provided. An authenticated administrator provisions each member with a unique username, required unique email, display name, and temporary password.
+- Newly provisioned or password-reset member accounts must change their temporary password before using protected features.
+- Members may change their own password through `POST /api/account/password`, providing `currentPassword` and `newPassword`. Password changes revoke the account's sessions; the user must sign in again.
+- The administrator can list members, update their profile fields, disable/re-enable accounts, reset temporary passwords, and revoke sessions through the `/api/admin/users` routes. Disabling an account must prevent its existing sessions from being used.
+- Passwords are hashed with PBKDF2-SHA-256 (210,000 iterations and a per-password salt); random bearer tokens are stored only as SHA-256 hashes.
+- The setup secret is for initial provisioning only. After setup, rotate or remove `SETUP_SECRET` in Worker settings. Never include the secret in frontend code, Git, screenshots, or chat.
+
+The account lifecycle and migration are not considered production-ready merely because routes exist. Verify the current branch's tests and CI, review account/session atomicity and first-admin initialization race safety, and inspect the actual target D1 schema before planning any migration. `schema.sql` is a baseline schema, **not proof of a safe migration for an existing database**.
+
+## Run local checks
 
 From the repository root with Node.js 22 or newer:
 
@@ -20,66 +27,52 @@ node --check backend/worker.js
 node --test tests/community-worker.test.mjs
 ```
 
-The GitHub Actions workflow also checks that JavaScript DOM references exist, validates the D1 schema with SQLite, and verifies core database constraints. These tests use mock bindings; they do not replace staging tests against a real Cloudflare Worker, D1 database, and R2 bucket.
+GitHub Actions also checks DOM references and validates the D1 schema with SQLite. Mock tests do not replace staging tests against a real Worker and database.
 
-## Cloudflare setup
+## Bindings and configuration
 
-1. Create a D1 database and an R2 bucket in the Cloudflare dashboard.
-2. Apply `schema.sql` to the D1 database using the D1 console or Wrangler.
-3. Create a Worker named `class-archive-api`, deploy `worker.js` as its entrypoint, and bind:
-   - D1 binding named `DB` to the database.
-   - R2 bucket binding named `MEDIA` to the bucket.
-4. Configure Worker variables:
-   - `ALLOWED_ORIGIN`: exact production origin for the static site, including scheme and hostname, with no trailing slash. Browser-origin requests fail closed if this is missing or does not match.
-   - Optional `SESSION_TTL_SECONDS`.
-5. Add `SETUP_SECRET` as a **secret**, not a plain variable. Generate a long random value locally; do not commit it or send it in chat.
-6. Deploy and verify `GET /api/health`.
+The Worker currently expects:
 
-Example Wrangler configuration (replace IDs locally; never commit real credentials):
+- `DB`: a Cloudflare D1 binding.
+- `MEDIA`: a Cloudflare R2 bucket binding.
+- `SETUP_SECRET`: a long random Worker secret, used only for one-time setup.
+- `ALLOWED_ORIGIN`: the exact HTTPS origin of the deployed static site, with no trailing slash.
+- Optional `SESSION_TTL_SECONDS`: session lifetime, bounded by the Worker.
 
-```toml
-name = "class-archive-api"
-main = "worker.js"
-compatibility_date = "2026-10-19"
+**Resource and migration caution:** Do not create paid resources or change a live database without explicit approval and a verified cost/schema review. Confirm current Cloudflare pricing and account limits before choosing R2. Do not apply `schema.sql` to an existing D1 as if it were a forward migration. Export/inspect the live schema first and prepare a reviewed, forward-only migration.
 
-[[d1_databases]]
-binding = "DB"
-database_name = "class-archive"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
-migrations_dir = "migrations"
+The health endpoint checks configured storage. A successful local mock test is not evidence that deployed bindings, secrets, migrations, or origin settings are correct.
 
-[[r2_buckets]]
-binding = "MEDIA"
-bucket_name = "class-archive-media"
+## One-time administrator setup
 
-[triggers]
-crons = ["17 3 * * *"]
-```
-
-The daily scheduled trigger prunes authentication-attempt records older than 24 hours and expired sessions. If configuring the Worker in the dashboard instead of Wrangler, add the same daily cron trigger there.
-
-Use a local `wrangler.toml` (or dashboard configuration) and real database IDs only in your own environment.
-
-## One-time account initialization
-
-After deploying and verifying storage bindings, send one POST request to `/api/setup` with header `X-Setup-Secret: <your secret>` and JSON body:
+After the Worker and its storage are configured in an approved environment, send a single POST request to `/api/setup` with header `X-Setup-Secret: <your secret>` and a JSON body like:
 
 ```json
 {
-  "adminUsername": "your-chosen-admin-username",
-  "adminPassword": "a unique random password of at least 12 characters",
-  "memberPassword": "a different random password of at least 12 characters"
+  "adminUsername": "choose-a-unique-admin-username",
+  "adminEmail": "admin@example.com",
+  "adminDisplayName": "Class Archive Admin",
+  "adminPassword": "a unique random password of at least 12 characters"
 }
 ```
 
-Use a password manager. Do not reuse your email, school, or GitHub password. This endpoint refuses to run after any account exists. After successful initialization, rotate or remove `SETUP_SECRET` in Worker settings. Never put it in frontend code, Git, screenshots, or chat.
+Use a password manager and do not reuse a school, email, GitHub, or other account password. The setup endpoint is intended to refuse initialization once an account exists. Confirm that the current implementation has a concurrency-safe one-time initialization guard before relying on it in production. After successful initialization, rotate or remove `SETUP_SECRET`.
 
-## Important integration notes
+## Privacy, media, and notifications
 
-- Frontend `community.js` sends the member login body as `{password}` and admin login as `{username,password}`; both match the API. The admin form includes a username field.
-- The admin can change their own password and rotate the shared class upload password. Members cannot self-change the shared password, preventing one member from locking out the whole class. Rotating it revokes all active member sessions; share the new password only through a trusted class channel. Accounts flagged with `must_change_password` cannot upload until the admin rotates the shared password.
-- Content is delivered through `/api/media/:id`; the frontend gallery must render these media URLs, not attempt to read private R2 objects directly.
-- The current frontend's `/api/push/subscribe` flow is not ready for production. Push delivery is not implemented and the API deliberately returns 501 instead of pretending notifications work.
-- This starter uses one shared class-member password for simplicity. If the class needs per-student access, implement individual account provisioning and reset/revocation workflows before launch.
-- Do not upload photos or videos of classmates without appropriate consent. The frontend explains public visibility and a removal-request path, but before launch replace the generic class-communication instruction with the actual trusted admin contact/channel. Do not publish sensitive personal information.
-- Keep Cloudflare edge rate limiting enabled as defense-in-depth, especially for login and setup, then run a security review and smoke tests on a staging Worker before sharing the portal. The Worker throttles failed login, setup-secret, and password-change verification attempts by IP/account key, but distributed attempts and other abuse still require edge-level protection. The static site and API must both use HTTPS.
+- Content and media endpoints may make published posts publicly accessible. Before launch, establish a class-photo consent and removal policy and make the actual administrator contact path clear. Do not upload photos/videos without permission or publish sensitive personal information.
+- `MEDIA` is a required R2 binding in the current Worker; do not assume Google Drive or another storage provider is integrated.
+- Push delivery is not implemented. The push API deliberately reports that it is unavailable rather than claiming notifications were sent.
+- Keep HTTPS enabled for the site and API. Use edge-level rate limiting as defense-in-depth and test a staging deployment before public launch.
+
+## Pre-launch checklist
+
+- [ ] Confirm all CI checks pass on the exact commit being reviewed.
+- [ ] Test member login with username and password from the frontend.
+- [ ] Test account creation, duplicate normalized username/email rejection, temporary-password gating, password change, disable/re-enable, reset, and session revocation.
+- [ ] Verify atomic state/session changes and protect one-time administrator initialization against concurrent requests.
+- [ ] Verify last-enabled-admin protection and role checks.
+- [ ] Inspect the target D1 schema and review a forward-only migration; do not apply the baseline schema blindly.
+- [ ] Confirm the media storage plan and cost before provisioning anything.
+- [ ] Confirm consent, public visibility, and removal-request handling.
+- [ ] Treat push notifications as unavailable until delivery and failure cases have real tests.
