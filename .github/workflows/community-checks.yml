@@ -35,6 +35,33 @@ jobs:
         run: node --check community.js
       - name: Check Worker JavaScript syntax
         run: node --check backend/worker.js
+      - name: Check Community Hub DOM references
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          import re
+
+          class IdParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.ids = []
+
+              def handle_starttag(self, tag, attrs):
+                  for key, value in attrs:
+                      if key == "id" and value:
+                          self.ids.append(value)
+
+          parser = IdParser()
+          parser.feed(Path("community.html").read_text(encoding="utf-8"))
+          duplicates = sorted({item for item in parser.ids if parser.ids.count(item) > 1})
+          js = Path("community.js").read_text(encoding="utf-8")
+          references = set(re.findall(r'\$\("([^"]+)"\)', js))
+          missing = sorted(references - set(parser.ids))
+          if duplicates or missing:
+              raise SystemExit(f"Duplicate HTML ids: {duplicates}; missing JS targets: {missing}")
+          print(f"DOM references OK: {len(references)} JavaScript targets found.")
+          PY
       - name: Validate D1 schema with SQLite
         run: |
           python3 - <<'PY'
