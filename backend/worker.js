@@ -496,14 +496,14 @@ async function handle(request, env) {
     const form = await readLimitedFormData(
       request,
       MAX_UPLOAD_REQUEST_BYTES,
-      "Upload request exceeds the 50 MB media limit."
+      "Upload request exceeds the 50 MiB media limit."
     );
     const type = form.get("type");
     const title = cleanText(form.get("title"), 120, "Title", true);
     const caption = cleanText(form.get("caption"), 1000, "Caption");
     const file = form.get("media");
     if (!(file instanceof File)) fail("Choose an image or video to upload.");
-    if (file.size < 1 || file.size > MAX_MEDIA_BYTES) fail("Media must be between 1 byte and 50 MB.", 413);
+    if (file.size < 1 || file.size > MAX_MEDIA_BYTES) fail("Media must be between 1 byte and 50 MiB.", 413);
     const mime = file.type.toLowerCase();
     const allowed = type === "image" ? ["image/jpeg","image/png","image/webp","image/gif"] :
       type === "video" ? ["video/mp4","video/webm","video/ogg"] : [];
