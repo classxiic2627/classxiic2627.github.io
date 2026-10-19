@@ -5,7 +5,7 @@ This is the API for the static site. It is intentionally separate from the publi
 ## What is implemented
 
 - D1 schema for admin/member accounts, expiring sessions, gallery metadata, announcements, push subscription records and hashed authentication-attempt keys; a daily scheduled cleanup for old attempts and expired sessions.
-- Worker routes for one-time setup, separate member/admin login, logout, password change, content listing/upload/deletion, announcements, media delivery and a health check.
+- Worker routes for one-time setup, separate member/admin login, logout, admin password change, admin-managed shared member-password rotation, content listing/upload/deletion, announcements, media delivery and a dependency-aware health check.
 - PBKDF2-SHA-256 password hashing (210,000 iterations, per-password salt); random bearer tokens are stored only as SHA-256 hashes.
 - R2 media storage; 15 MB upload limit and allowlisted MIME types; parameterized SQL; origin allowlisting; no-cache auth responses; IP-keyed throttling for failed login, setup-secret, and password-change verification attempts (10 failures per 15-minute window).
 - Push key discovery endpoint only. Push delivery is intentionally not represented as working until VAPID signing and real delivery tests are implemented.
