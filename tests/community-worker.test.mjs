@@ -1349,6 +1349,57 @@ test("accepts a PNG upload with a matching file signature", async () => {
   assert.ok((await response.json()).id);
 });
 
+test("removes an uploaded R2 object when D1 metadata insertion fails", async () => {
+  const pngBytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4J8AAAAASUVORK5CYII=",
+    "base64"
+  );
+  const form = new FormData();
+  form.set("type", "image");
+  form.set("title", "Compensation test");
+  form.set("caption", "");
+  form.set("media", new Blob([pngBytes], { type: "image/png" }), "pixel.png");
+  let storedKey = null;
+  const deletedKeys = [];
+  const uploadEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql,
+              values,
+              first: async () => sql.includes("FROM sessions s JOIN users") ? memberSession : null,
+              run: async () => {
+                if (sql.includes("INSERT INTO content")) throw new Error("simulated D1 insert failure");
+                return { success: true };
+              }
+            };
+          }
+        };
+      }
+    },
+    MEDIA: {
+      put: async key => { storedKey = key; },
+      delete: async key => { deletedKeys.push(key); }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/content", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "v".repeat(64)
+    },
+    body: form
+  }), uploadEnv);
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), { error: "Internal server error." });
+  assert.ok(storedKey);
+  assert.deepEqual(deletedKeys, [storedKey]);
+});
+
 test("successful member login creates a hashed, expiring session", async () => {
   const statements = [];
   const user = {
