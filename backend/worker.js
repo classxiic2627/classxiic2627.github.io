@@ -170,10 +170,11 @@ async function requireChangedPassword(user) {
   if (user.must_change_password) fail("Change your temporary password before continuing.", 403);
 }
 async function handle(request, env) {
-  if (!env.DB || !env.MEDIA) fail("Server storage is not configured.", 503);
+  if (!env.DB) fail("Database storage is not configured.", 503);
   const url = new URL(request.url);
   const path = url.pathname;
   if (request.method === "GET" && path === "/api/health") {
+    if (!env.MEDIA) fail("Media storage is not configured.", 503);
     try {
       await env.DB.prepare("SELECT 1 AS ok").first();
       await env.MEDIA.head("__community_health_check__");
@@ -340,6 +341,7 @@ async function handle(request, env) {
   if (request.method === "POST" && path === "/api/content") {
     const user = await auth(request, env, "member");
     await requireChangedPassword(user);
+    if (!env.MEDIA) fail("Media storage is not configured; uploads are unavailable.", 503);
     const length = Number(request.headers.get("content-length") || 0);
     if (length > MAX_MEDIA_BYTES + 1024 * 1024) fail("Upload exceeds 15 MB.", 413);
     let form;
@@ -365,6 +367,7 @@ async function handle(request, env) {
     return json({ok:true, id:itemId}, 201, env.ALLOWED_ORIGIN);
   }
   if (request.method === "GET" && path.startsWith("/api/media/")) {
+    if (!env.MEDIA) fail("Media storage is not configured.", 503);
     const itemId = decodeURIComponent(path.slice("/api/media/".length));
     const row = await env.DB.prepare("SELECT media_key,media_mime,media_size FROM content WHERE id=?").bind(itemId).first();
     if (!row) fail("Media not found.", 404);
@@ -382,6 +385,7 @@ async function handle(request, env) {
   }
   if (request.method === "DELETE" && path.startsWith("/api/admin/content/")) {
     const user = await auth(request, env, "admin"); await requireChangedPassword(user);
+    if (!env.MEDIA) fail("Media storage is not configured; deletion is unavailable.", 503);
     const itemId = decodeURIComponent(path.slice("/api/admin/content/".length));
     const row = await env.DB.prepare("SELECT media_key FROM content WHERE id=?").bind(itemId).first();
     if (!row) fail("Content not found.", 404);
