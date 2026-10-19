@@ -486,6 +486,7 @@ async function handle(request, env) {
     let stored;
     try {
       stored = await mediaStore.put("uploads/" + itemId, file.stream(), {
+        size: file.size,
         httpMetadata: {contentType:mime, cacheControl:"private, no-store"}
       });
     } catch {
