@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import worker from "../backend/worker.js";
 
 const origin = "https://classxiic2627.github.io";
@@ -21,6 +23,37 @@ function request(path, { method = "GET", headers = {} } = {}) {
     headers: new Headers(headers)
   });
 }
+
+test("service-worker notification clicks cannot navigate the archive off-origin", async () => {
+  const handlers = new Map();
+  const navigated = [];
+  const focused = [];
+  const archiveOrigin = "https://classxiic2627.github.io";
+  const client = {
+    url: archiveOrigin + "/community.html",
+    navigate: async url => { navigated.push(url); },
+    focus: async () => { focused.push(true); }
+  };
+  const self = {
+    location: { origin: archiveOrigin },
+    addEventListener: (name, handler) => handlers.set(name, handler)
+  };
+  const clients = {
+    matchAll: async () => [client],
+    openWindow: async url => { navigated.push(url); }
+  };
+  runInNewContext(readFileSync(new URL("../sw.js", import.meta.url), "utf8"), { self, clients, URL });
+  let completion;
+  let closed = false;
+  handlers.get("notificationclick")({
+    notification: { data: { url: "https://attacker.example/phishing" }, close() { closed = true; } },
+    waitUntil(promise) { completion = promise; }
+  });
+  await completion;
+  assert.equal(closed, true);
+  assert.deepEqual(navigated, [archiveOrigin + "/"]);
+  assert.deepEqual(focused, [true]);
+});
 
 test("health endpoint returns a non-cacheable success response", async () => {
   const response = await worker.fetch(request("/api/health", {
