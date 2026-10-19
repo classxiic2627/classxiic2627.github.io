@@ -11,7 +11,11 @@ self.addEventListener("push", event => {
 });
 self.addEventListener("notificationclick", event => {
   event.notification.close();
-  const target = new URL(event.notification.data?.url || "/", self.location.origin).href;
+  const requestedTarget = new URL(event.notification.data?.url || "/", self.location.origin);
+  // Notification payloads must never navigate an archive tab off-origin.
+  const target = requestedTarget.origin === self.location.origin
+    ? requestedTarget.href
+    : new URL("/", self.location.origin).href;
   event.waitUntil(clients.matchAll({type:"window", includeUncontrolled:true}).then(list => {
     const existing = list.find(client => client.url.startsWith(self.location.origin));
     if (existing) { existing.navigate(target); return existing.focus(); }
