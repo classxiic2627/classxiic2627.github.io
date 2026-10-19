@@ -118,6 +118,11 @@ async function main() {
     "Student could not sign in with the new password.");
   console.log("PASS: student can sign in with the new password.");
 
+  const deniedAdminAccess = await api("/api/admin/users", { token: relogin.data.token });
+  assert(deniedAdminAccess.response.status === 403,
+    "A member session was able to access the administrator account-management API.");
+  console.log("PASS: member session is denied administrator-only account management.");
+
   const oldPassword = await api("/api/member/login", {
     method: "POST",
     body: { username, password: temporaryPassword }
