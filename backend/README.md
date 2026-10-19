@@ -55,7 +55,7 @@ The Worker currently expects:
 - `backend/migrations/0001_initial.sql` is the versioned **initial schema for a new, empty database**. CI checks it against `backend/schema.sql`. It is not a safe migration for an existing D1 database. Inspect the actual schema and migration history and prepare a separate, reviewed forward migration if data or tables already exist.
 - No database ID, OAuth secret, refresh token, deployed Worker URL, or production environment is supplied by these templates. Do not deploy or run migrations against a remote database until resource identity, schema, and recovery plan are verified and the repository owner explicitly approves.
 
-The health endpoint checks D1 and access to the configured Google Drive folder, returning `503` if either is unavailable. The frontend reads its Worker origin from the `community-api-base` meta value in `community.html`. It intentionally remains blank until a verified Worker origin is configured; do not invent a URL or point the published site at localhost.
+Health endpoints have separate contracts: public `GET /api/health` is a cheap liveness response and must not query D1, refresh OAuth, or call Google Drive. Admin-authenticated `GET /api/admin/health` checks D1 and access to the configured Google Drive folder, returning a dependency error if either is unavailable. This detailed route requires a valid admin session and completion of the forced-password-change flow. The frontend reads its Worker origin from the `community-api-base` meta value in `community.html`. It intentionally remains blank until a verified Worker origin is configured; do not invent a URL or point the published site at localhost.
 
 ## Reproducible local demo
 
@@ -82,10 +82,17 @@ Prerequisites: Node.js 22+, npm, and Wrangler 4. Start from a clean checkout of 
    npx wrangler@4 d1 migrations apply community-hub-local --local --config wrangler.local.toml
    npx wrangler@4 dev --local --config wrangler.local.toml --ip 127.0.0.1 --port 8787
    ```
-4. In a second terminal, serve the existing static site from the repository root:
-   ```sh
-   python -m http.server 8000 --bind 127.0.0.1
+4. In a second terminal, serve only an allowlisted temporary copy of public site assets. Do **not** serve the repository root: local `.dev.vars`, demo credentials, and Wrangler configuration may be present there.
+   ```powershell
+   $demoSite = Join-Path $env:TEMP "class-xii-c-community-static"
+   New-Item -ItemType Directory -Force $demoSite | Out-Null
+   Copy-Item community.html,community.js,styles.css,index.html,gallery.html,script.js,sw.js -Destination $demoSite
+   foreach ($dir in @("images","gallery","games","vimages")) {
+     if (Test-Path $dir) { Copy-Item $dir -Destination $demoSite -Recurse -Force }
+   }
+   python -m http.server 8000 --bind 127.0.0.1 --directory $demoSite
    ```
+   Remove the temporary directory after stopping the server. For a managed one-command flow, prefer `npm run demo:local`, which uses an allowlisted temporary document root and cleans it up on exit.
 5. Open the static site at `http://127.0.0.1:8000/community.html`. On plain-HTTP `127.0.0.1` only, the existing frontend automatically defaults to the local Worker at `http://127.0.0.1:8787` (matching the local CORS origin). The committed `community-api-base` meta value remains blank, and the published site does not use the localhost fallback.
 6. Initialize the first admin from a trusted terminal, not the browser. For example, use PowerShell and keep the secret/password in local environment variables:
    ```powershell
