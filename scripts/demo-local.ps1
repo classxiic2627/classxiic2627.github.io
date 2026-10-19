@@ -38,7 +38,7 @@ if ($existingVars -match '(?m)^SETUP_SECRET=.*$') {
 } else {
   $existingVars = $existingVars.TrimEnd() + [Environment]::NewLine + $setupLine + [Environment]::NewLine
 }
-Set-Content -Path $devVarsPath -Value $existingVars -Encoding utf8
+Set-Content -Path $devVarsPath -Value $existingVars -Encoding ascii
 
 Write-Host "Applying migrations to Wrangler's LOCAL D1 only..."
 & npx --yes wrangler@4 d1 migrations apply community-hub-local --local --config wrangler.local.toml
@@ -46,6 +46,7 @@ if ($LASTEXITCODE -ne 0) { throw "Local D1 migration failed. No remote database 
 
 $workerLog = Join-Path $root ".wrangler\local-demo-worker.log"
 $staticLog = Join-Path $root ".wrangler\local-demo-static.log"
+$staticErrorLog = Join-Path $root ".wrangler\local-demo-static.err"
 New-Item -ItemType Directory -Force (Join-Path $root ".wrangler") | Out-Null
 $workerCommand = 'npx --yes wrangler@4 dev --local --config wrangler.local.toml --ip 127.0.0.1 --port 8787 > "' + $workerLog + '" 2>&1'
 $worker = Start-Process -FilePath $env:ComSpec -ArgumentList @("/c", $workerCommand) -WorkingDirectory $root -PassThru -WindowStyle Hidden
@@ -87,7 +88,7 @@ try {
     }
   }
 
-  $static = Start-Process -FilePath "python" -ArgumentList @("-m","http.server","8000","--bind","127.0.0.1") -WorkingDirectory $root -PassThru -WindowStyle Hidden -RedirectStandardOutput $staticLog -RedirectStandardError $staticLog
+  $static = Start-Process -FilePath "python" -ArgumentList @("-m","http.server","8000","--bind","127.0.0.1") -WorkingDirectory $root -PassThru -WindowStyle Hidden -RedirectStandardOutput $staticLog -RedirectStandardError $staticErrorLog
   Start-Sleep -Seconds 1
   Write-Host ""
   Write-Host "LOCAL DEMO IS RUNNING — no Cloudflare account or Google credentials are used for login."
