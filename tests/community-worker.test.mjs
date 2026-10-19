@@ -795,3 +795,17 @@ test("rejects passwords made entirely of whitespace", async () => {
     error: "The new class upload password must be at least 12 characters and cannot be blank."
   });
 });
+
+test("rejects null announcement payloads as client errors", async () => {
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/announcements", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "m".repeat(64),
+      "Content-Type": "application/json"
+    },
+    body: "null"
+  }), authenticatedEnv(adminSession));
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Invalid request body." });
+});
