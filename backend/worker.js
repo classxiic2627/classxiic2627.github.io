@@ -25,6 +25,8 @@ function json(data, status = 200, origin = null) {
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
       ...(origin ? corsHeaders(origin) : {})
     }
   });
