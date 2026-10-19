@@ -6,6 +6,10 @@ name = "class-xii-c-community-hub-api-staging"
 main = "backend/worker.js"
 compatibility_date = "2026-10-19"
 
+[vars]
+# Replace with the exact HTTPS origin of the approved staging site (no trailing slash).
+ALLOWED_ORIGIN = "https://REPLACE_WITH_APPROVED_STAGING_ORIGIN"
+
 [triggers]
 # Required for the Worker's scheduled() cleanup handler. Verify this trigger in staging.
 crons = ["17 3 * * *"]
