@@ -1218,6 +1218,37 @@ test("rejects oversized JSON bodies when Content-Length is absent", async () => 
   assert.deepEqual(await response.json(), { error: "Request body is too large." });
 });
 
+test("rejects oversized numeric Content-Length before reading the request body", async () => {
+  const req = new Request("https://api.example.test/api/member/login", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.61",
+      "Content-Type": "application/json",
+      "Content-Length": String(1024 * 1024 + 1)
+    },
+    body: "{}"
+  });
+  const jsonEnv = {
+    ...env,
+    DB: {
+      prepare() {
+        return {
+          bind() {
+            return {
+              first: async () => ({ n: 0 }),
+              run: async () => ({ success: true })
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(req, jsonEnv);
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: "Request body is too large." });
+});
+
 test("rejects oversized multipart bodies when Content-Length is absent before parsing", async () => {
   const body = new Uint8Array(16 * 1024 * 1024 + 1);
   const req = new Request("https://api.example.test/api/content", {
