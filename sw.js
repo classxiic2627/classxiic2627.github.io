@@ -22,7 +22,10 @@ self.addEventListener("notificationclick", event => {
     ? requestedTarget.href
     : new URL("/", self.location.origin).href;
   event.waitUntil(clients.matchAll({type:"window", includeUncontrolled:true}).then(list => {
-    const existing = list.find(client => client.url.startsWith(self.location.origin));
+    const existing = list.find(client => {
+      try { return new URL(client.url).origin === self.location.origin; }
+      catch { return false; }
+    });
     if (existing) { existing.navigate(target); return existing.focus(); }
     return clients.openWindow(target);
   }));
