@@ -1743,6 +1743,41 @@ test("accepts a PNG upload with a matching file signature", async () => {
   assert.ok((await response.json()).id);
 });
 
+test("allows an authenticated admin account to upload media", async () => {
+  const pngBytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4J8AAAAASUVORK5CYII=",
+    "base64"
+  );
+  const form = new FormData();
+  form.set("type", "image");
+  form.set("title", "Admin upload");
+  form.set("caption", "");
+  form.set("media", new Blob([pngBytes], { type: "image/png" }), "admin-pixel.png");
+  let storedDriveId = null;
+  const adminEnv = {
+    ...authenticatedEnv(adminSession),
+    __googleFetch: makeGoogleFetch({
+      uploadId: "drive-file-admin-png",
+      onUpload: ({ metadata, id }) => {
+        storedDriveId = id;
+        assert.equal(metadata.mimeType, "image/png");
+        assert.deepEqual(metadata.parents, [driveFolderId]);
+      }
+    })
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/content", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "a".repeat(64)
+    },
+    body: form
+  }), adminEnv);
+  assert.equal(response.status, 201);
+  assert.equal(storedDriveId, "drive-file-admin-png");
+  assert.ok((await response.json()).id);
+});
+
 test("removes an uploaded Google Drive file when D1 metadata insertion fails", async () => {
   const pngBytes = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4J8AAAAASUVORK5CYII=",
