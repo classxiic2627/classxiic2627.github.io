@@ -687,3 +687,39 @@ test("health endpoint reports an R2 dependency failure", async () => {
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), { error: "Internal server error." });
 });
+
+test("rejects oversized setup secrets and records the failed attempt", async () => {
+  const statements = [];
+  const setupEnv = {
+    ...env,
+    SETUP_SECRET: "a-valid-test-secret-for-initialization",
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first: async () => ({ n: 0 }),
+              run: async () => {
+                statements.push({ sql, values });
+                return { success: true };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/setup", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.52",
+      "Content-Type": "application/json",
+      "X-Setup-Secret": "x".repeat(257)
+    },
+    body: "{}"
+  }), setupEnv);
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Not authorized." });
+  assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO auth_attempts")));
+});
