@@ -384,3 +384,38 @@ test("health endpoint reports a dependency failure when D1 is unreachable", asyn
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), { error: "Internal server error." });
 });
+
+test("throttles password-change verification attempts per authenticated account", async () => {
+  const protectedEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          bind() {
+            return {
+              first: async () => {
+                if (sql.includes("FROM sessions")) return memberSession;
+                if (sql.includes("FROM auth_attempts")) return { n: 10 };
+                return null;
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/account/password", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.48",
+      Authorization: "Bearer " + "d".repeat(64),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ currentPassword: "not-used", newPassword: "also-not-used" })
+  }), protectedEnv);
+  assert.equal(response.status, 429);
+  assert.deepEqual(await response.json(), {
+    error: "Too many attempts. Please try again in 15 minutes."
+  });
+});
