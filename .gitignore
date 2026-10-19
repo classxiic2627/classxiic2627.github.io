@@ -9,3 +9,6 @@ wrangler.local.toml
 # Local tooling artifacts
 node_modules/
 .wrangler/
+
+# Generated local demo credentials; never commit them
+.local-demo-credentials.txt
