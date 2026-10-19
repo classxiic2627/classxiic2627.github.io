@@ -18,7 +18,7 @@ This is the API for the static site. It is intentionally separate from the publi
    - D1 binding named `DB` to the database.
    - R2 bucket binding named `MEDIA` to the bucket.
 4. Configure Worker variables:
-   - `ALLOWED_ORIGIN`: exact production origin for the static site, including scheme and hostname, with no trailing slash.
+   - `ALLOWED_ORIGIN`: exact production origin for the static site, including scheme and hostname, with no trailing slash. Browser-origin requests fail closed if this is missing or does not match.
    - Optional `SESSION_TTL_SECONDS`.
 5. Add `SETUP_SECRET` as a **secret**, not a plain variable. Generate a long random value locally; do not commit it or send it in chat.
 6. Deploy and verify `GET /api/health`.
