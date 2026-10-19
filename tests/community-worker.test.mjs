@@ -823,3 +823,57 @@ test("rejects malformed multipart upload bodies as client errors", async () => {
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "Invalid upload form." });
 });
+
+test("successful member login creates a hashed, expiring session", async () => {
+  const statements = [];
+  const user = {
+    id: 7,
+    username: "class-members",
+    display_name: "Class Members",
+    role: "member",
+    password_hash: "AAAAAAAAAAAAAAAAAAAAAA==$DGjF6pAtZCrqHycMaLV0VxSi/IV3kuF9nxysUBNVVvs=",
+    disabled: 0,
+    must_change_password: 0
+  };
+  const loginEnv = {
+    ...env,
+    SESSION_TTL_SECONDS: "3600",
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first: async () => {
+                if (sql.includes("FROM auth_attempts")) return { n: 0 };
+                if (sql.includes("FROM users")) return user;
+                return null;
+              },
+              run: async () => {
+                statements.push({ sql, values });
+                return { success: true };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/member/login", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.54",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ password: "class-archive-test-passphrase" })
+  }), loginEnv);
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.match(data.token, /^[0-9a-f]{64}$/);
+  assert.equal(data.mustChangePassword, false);
+  assert.equal(data.user.role, "member");
+  const sessionInsert = statements.find(({ sql }) => sql.includes("INSERT INTO sessions"));
+  assert.ok(sessionInsert);
+  assert.notEqual(sessionInsert.values[0], data.token);
+  assert.ok(sessionInsert.values[2] > sessionInsert.values[3]);
+});
