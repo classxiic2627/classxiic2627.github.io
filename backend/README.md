@@ -30,46 +30,6 @@ npm test
 
 The dependency-free `package.json` defines the same checks used by CI. GitHub Actions also checks DOM references and validates that `backend/migrations/0001_initial.sql` produces the same schema objects as `backend/schema.sql`. Mock tests do not replace staging tests against a real Worker and database.
 
-## Local end-to-end demo (isolated D1)
-
-This runs the Worker against Wrangler's **local** D1 database. It does not create or modify a Cloudflare database, deploy a Worker, or require a Google credential for the login/account flow.
-
-Prerequisites: Node.js 22+, npm, and Python 3. Copy `wrangler.local.example.toml` to `wrangler.local.toml` (the local file is ignored by Git). Keep its `ALLOWED_ORIGIN` set to `http://127.0.0.1:8000`. Create `.dev.vars` in the repository root with a local-only secret:
-
-```dotenv
-SETUP_SECRET="local-only-change-this-to-a-long-random-value"
-```
-
-Do not reuse a real password or setup secret. Leave Google secrets out unless you are specifically validating Drive with an owner-authorized test account.
-
-Run these commands from the repository root in separate terminals:
-
-```sh
-npm run check
-npm test
-npx wrangler@4 d1 migrations apply community-hub-local --local --config wrangler.local.toml
-npx wrangler@4 dev --local --config wrangler.local.toml --port 8787
-```
-
-In a second terminal, serve the existing static site:
-
-```sh
-python -m http.server 8000 --bind 127.0.0.1
-```
-
-For this local run only, change the `community-api-base` meta element in `community.html` to `http://127.0.0.1:8787`. Do not commit that local edit. Open `http://127.0.0.1:8000/community.html`. Initialize the local administrator once using the local-only value from `.dev.vars`:
-
-```sh
-curl -X POST http://127.0.0.1:8787/api/setup \
-  -H "X-Setup-Secret: local-only-change-this-to-a-long-random-value" \
-  -H "Content-Type: application/json" \
-  --data '{"adminUsername":"admin.demo","adminEmail":"admin@example.test","adminDisplayName":"Local Demo Admin","adminPassword":"Local-Demo-Password-123!"}'
-```
-
-Sign in as the administrator in the page, create a student account with a temporary password, then sign in as that student and complete the forced password change. The local D1 data stays in Wrangler's local state; delete that local state only when you want to reset the demo.
-
-Without valid Google OAuth credentials and access to the dedicated Drive folder, `GET /api/health` and media upload/read/delete operations fail closed. This is expected in the auth-only demo. The mocked Drive tests verify the Worker-to-Google API contract but **do not** verify real Google credentials, folder permissions, local D1 behavior, or a deployed staging environment. For real Drive validation, obtain owner approval and use a separate test folder/account; never use production files.
-
 ## Bindings and configuration
 
 The Worker currently expects:
