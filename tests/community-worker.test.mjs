@@ -1183,7 +1183,14 @@ test("rejects null setup payloads without creating accounts", async () => {
 test("admin readiness reports a dependency failure when D1 is unreachable", async () => {
   const brokenEnv = {
     ...authenticatedEnv(adminSession),
-    DB: { prepare() { return { first: async () => { throw new Error("simulated D1 outage"); } }; } }
+    DB: {
+      prepare() {
+        return {
+          first: async () => { throw new Error("simulated D1 outage"); },
+          bind() { return { first: async () => adminSession, run: async () => ({meta:{changes:1}}) }; }
+        };
+      }
+    }
   };
   const response = await worker.fetch(request("/api/admin/health", {
     headers: {Origin:origin,Authorization:"Bearer " + "a".repeat(64)}
