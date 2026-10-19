@@ -185,9 +185,11 @@ async function issueSession(user, env) {
     .bind(await digest(token), user.id, now + ttl, now).run();
   return {token, expiresIn:ttl, user:{username:user.username, displayName:user.display_name, role:user.role}};
 }
-async function reserveAuthAttempt(request, env, scope) {
+async function reserveAuthAttempt(request, env, scope, maxAttempts = AUTH_MAX_ATTEMPTS, identity = null) {
   const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  const keyHash = await digest(scope + ":" + ip);
+  // Identity values (such as normalized usernames) are hashed with the scope;
+  // raw account identifiers are never stored in auth_attempts.
+  const keyHash = await digest(scope + ":" + (identity === null ? ip : identity));
   const now = Math.floor(Date.now() / 1000);
   const cutoff = now - AUTH_WINDOW_SECONDS;
   // Count and reserve in one SQLite write statement so concurrent requests
@@ -195,7 +197,7 @@ async function reserveAuthAttempt(request, env, scope) {
   const result = await env.DB.prepare(
     "INSERT INTO auth_attempts(key_hash,attempted_at) " +
     "SELECT ?,? WHERE (SELECT COUNT(*) FROM auth_attempts WHERE key_hash=? AND attempted_at>?) < ?"
-  ).bind(keyHash, now, keyHash, cutoff, AUTH_MAX_ATTEMPTS).run();
+  ).bind(keyHash, now, keyHash, cutoff, maxAttempts).run();
   if (Number(result.meta?.changes || 0) !== 1) {
     fail("Too many attempts. Please try again in 15 minutes.", 429);
   }
@@ -211,12 +213,25 @@ async function clearAuthReservation(env, attempt) {
     .bind(attempt.id, attempt.keyHash).run();
 }
 async function login(request, env, role) {
-  const attempt = await reserveAuthAttempt(request, env, "login:" + role);
   const body = await readJson(request);
   if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
   const username = cleanText(body.username, 64, "Username", true).toLowerCase();
   const password = body.password;
   if (typeof password !== "string" || password.length > 256) fail("Invalid username or password.", 401);
+
+  // Layer a generous IP-wide ceiling over a stricter per-account bucket. A
+  // school/NAT IP can serve many students, so a few mistakes by one student
+  // must not lock every member out. The account bucket is keyed by a digest of
+  // the normalized username and applies across IPs to slow distributed guesses.
+  const ipAttempt = await reserveAuthAttempt(request, env, "login-ip:" + role, 100);
+  let accountAttempt;
+  try {
+    accountAttempt = await reserveAuthAttempt(request, env, "login-account:" + role, AUTH_MAX_ATTEMPTS, username);
+  } catch (error) {
+    try { await clearAuthReservation(env, ipAttempt); } catch {}
+    throw error;
+  }
+
   const user = await env.DB.prepare(
     "SELECT id, username, display_name, role, password_hash, disabled, must_change_password FROM users WHERE username=? AND role=?"
   ).bind(username, role).first();
@@ -228,7 +243,8 @@ async function login(request, env, role) {
   if (!okay) {
     fail("Invalid username or password.", 401);
   }
-  await clearAuthReservation(env, attempt);
+  await clearAuthReservation(env, ipAttempt);
+  await clearAuthReservation(env, accountAttempt);
   return json({...await issueSession(user, env), mustChangePassword:!!user.must_change_password}, 200, env.ALLOWED_ORIGIN);
 }
 async function requireChangedPassword(user) {
