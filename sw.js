@@ -11,7 +11,12 @@ self.addEventListener("push", event => {
 });
 self.addEventListener("notificationclick", event => {
   event.notification.close();
-  const requestedTarget = new URL(event.notification.data?.url || "/", self.location.origin);
+  let requestedTarget;
+  try {
+    requestedTarget = new URL(event.notification.data?.url || "/", self.location.origin);
+  } catch {
+    requestedTarget = new URL("/", self.location.origin);
+  }
   // Notification payloads must never navigate an archive tab off-origin.
   const target = requestedTarget.origin === self.location.origin
     ? requestedTarget.href
