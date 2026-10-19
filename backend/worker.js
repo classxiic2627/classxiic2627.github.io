@@ -277,7 +277,14 @@ async function handle(request, env) {
   }
   if (!env.DB) fail("Database storage is not configured.", 503);
   if (request.method === "GET" && path === "/api/admin/health") {
-    const admin = await auth(request, env, "admin");
+    let admin;
+    try {
+      admin = await auth(request, env, "admin");
+    } catch (error) {
+      // Preserve expected auth failures, but report an unavailable D1 session lookup as dependency failure.
+      if (Number(error?.status)) throw error;
+      fail("Storage health check failed.", 503);
+    }
     await requireChangedPassword(admin);
     try {
       await env.DB.prepare("SELECT 1 AS ok").first();
