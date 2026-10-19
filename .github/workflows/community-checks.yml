@@ -87,8 +87,8 @@ jobs:
 
           try:
               connection.execute(
-                  "INSERT INTO users(username,display_name,role,password_hash) VALUES(?,?,?,?)",
-                  ("invalid-role", "Invalid Role", "superuser", "not-a-real-hash"),
+                  "INSERT INTO users(username,email,display_name,role,password_hash) VALUES(?,?,?,?,?)",
+                  ("invalid-role", "invalid@example.test", "Invalid Role", "superuser", "not-a-real-hash"),
               )
           except sqlite3.IntegrityError:
               pass
@@ -96,13 +96,13 @@ jobs:
               raise SystemExit("Users table accepted an invalid role.")
 
           connection.execute(
-              "INSERT INTO users(username,display_name,role,password_hash) VALUES(?,?,?,?)",
-              ("schema-test", "Schema Test", "member", "not-a-real-hash"),
+              "INSERT INTO users(username,email,display_name,role,password_hash) VALUES(?,?,?,?,?)",
+              ("schema-test", "schema-test@example.test", "Schema Test", "member", "not-a-real-hash"),
           )
           try:
               connection.execute(
-                  "INSERT INTO users(username,display_name,role,password_hash) VALUES(?,?,?,?)",
-                  ("SCHEMA-TEST", "Duplicate Test", "admin", "not-a-real-hash"),
+                  "INSERT INTO users(username,email,display_name,role,password_hash) VALUES(?,?,?,?,?)",
+                  ("SCHEMA-TEST", "duplicate@example.test", "Duplicate Test", "admin", "not-a-real-hash"),
               )
           except sqlite3.IntegrityError:
               pass
