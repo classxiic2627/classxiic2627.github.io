@@ -288,3 +288,31 @@ test("throttles repeated initial-setup attempts", async () => {
     error: "Too many attempts. Please try again in 15 minutes."
   });
 });
+
+test("rejects disallowed upload MIME types before writing to media storage", async () => {
+  let mediaWrites = 0;
+  const uploadEnv = {
+    ...authenticatedEnv(memberSession),
+    MEDIA: {
+      async put() { mediaWrites++; }
+    }
+  };
+  const form = new FormData();
+  form.set("type", "image");
+  form.set("title", "Test upload");
+  form.set("caption", "");
+  form.set("media", new File(["not an image"], "payload.html", { type: "text/html" }));
+  const response = await worker.fetch(new Request("https://api.example.test/api/content", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "c".repeat(64)
+    },
+    body: form
+  }), uploadEnv);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: "File type does not match an allowed image/video type."
+  });
+  assert.equal(mediaWrites, 0);
+});
