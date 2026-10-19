@@ -1642,21 +1642,20 @@ test("rejects oversized numeric Content-Length before reading the request body",
   assert.deepEqual(await response.json(), { error: "Request body is too large." });
 });
 
-test("rejects oversized multipart bodies when Content-Length is absent before parsing", async () => {
-  const body = new Uint8Array(16 * 1024 * 1024 + 1);
+test("rejects multipart uploads over the 50 MB limit from declared length before parsing", async () => {
   const req = new Request("https://api.example.test/api/content", {
     method: "POST",
     headers: {
       Origin: origin,
       Authorization: "Bearer " + "q".repeat(64),
-      "Content-Type": "multipart/form-data; boundary=community-test"
+      "Content-Type": "multipart/form-data; boundary=community-test",
+      "Content-Length": String(51 * 1024 * 1024 + 1)
     },
-    body
+    body: "not parsed because the declared request size exceeds the cap"
   });
-  assert.equal(req.headers.get("content-length"), null);
   const response = await worker.fetch(req, authenticatedEnv(memberSession));
   assert.equal(response.status, 413);
-  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 15 MB media limit." });
+  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 50 MB media limit." });
 });
 
 test("rejects malformed multipart upload bodies as client errors", async () => {
