@@ -73,7 +73,7 @@ Before any approved migration:
 ## 5. Release checklist
 
 - [x] Exact-head automated CI passed at `e8e9149b3fd5cd629241375935c81b9898b275d8`: run [39289371208](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289371208), 71/71 automated tests plus syntax, DOM, schema/migration, and Wrangler template checks.
-- [ ] Run and record the local D1 smoke script.
+- [x] Local D1 smoke script passed in CI run [39289371208](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289371208); real Google Drive remains unverified.
 - [ ] Verify real Google OAuth and Drive folder access using a dedicated test account/folder.
 - [ ] Resolve public-media visibility and class-photo consent/removal policy.
 - [ ] Select and implement an owner-approved aggregate upload quota.
@@ -81,4 +81,4 @@ Before any approved migration:
 - [ ] Verify staging end-to-end with isolated D1 and Drive resources, exact CORS/API origin, Cron Trigger, and edge rate limits.
 - [ ] Obtain explicit owner approval before merge/deployment or any production action.
 
-**Current decision: BLOCKED pending the unchecked evidence and owner decisions above.** A green automated suite is useful progress, but it is not proof of a real local D1 run, real Google Drive access, staging readiness, or permission to launch.
+**Current decision: BLOCKED pending the unchecked evidence and owner decisions above.** A green automated suite and isolated local D1 smoke are useful progress, but they are not proof of real Google Drive access, Cloudflare staging readiness, or permission to launch.
