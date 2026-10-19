@@ -375,6 +375,39 @@ test("disabling a member and revoking their sessions use one atomic D1 batch", a
   assert.match(batchStatements[1].sql,/DELETE FROM sessions WHERE user_id/);
 });
 
+test("account management remains available without R2 media storage", async () => {
+  const accountEnv = {
+    ALLOWED_ORIGIN: origin,
+    DB: {
+      prepare() {
+        return {
+          bind() { return { first: async () => adminSession }; },
+          all: async () => ({ results: [] })
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/users", {
+    headers: { Origin: origin, Authorization: "Bearer " + "m".repeat(64) }
+  }), accountEnv);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { items: [] });
+
+  const health = await worker.fetch(request("/api/health"), accountEnv);
+  assert.equal(health.status, 503);
+  assert.deepEqual(await health.json(), { error: "Media storage is not configured." });
+});
+
+test("upload fails closed with a clear 503 when R2 is not configured", async () => {
+  const mediaMissingEnv = { ...authenticatedEnv(memberSession), MEDIA: undefined };
+  const response = await worker.fetch(request("/api/content", {
+    method: "POST",
+    headers: { Origin: origin, Authorization: "Bearer " + "u".repeat(64) }
+  }), mediaMissingEnv);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "Media storage is not configured; uploads are unavailable." });
+});
+
 test("public registration is not implemented", async () => {
   const response = await worker.fetch(request("/api/register", {
     method:"POST",
