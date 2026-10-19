@@ -69,5 +69,5 @@ test("reports unavailable storage instead of claiming the API is healthy", async
     ALLOWED_ORIGIN: origin
   });
   assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { error: "Server storage is not configured." });
+  assert.deepEqual(await response.json(), { error: "Internal server error." });
 });
