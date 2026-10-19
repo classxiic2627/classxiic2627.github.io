@@ -877,3 +877,19 @@ test("successful member login creates a hashed, expiring session", async () => {
   assert.notEqual(sessionInsert.values[0], data.token);
   assert.ok(sessionInsert.values[2] > sessionInsert.values[3]);
 });
+
+test("admin must complete a required password change before rotating member credentials", async () => {
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "o".repeat(64),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ newPassword: "x".repeat(16) })
+  }), authenticatedEnv({ ...adminSession, must_change_password: 1 }));
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), {
+    error: "Change your temporary password before continuing."
+  });
+});
