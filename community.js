@@ -71,6 +71,9 @@
       $("memberUsername").value = "";
       $("memberPassword").value = "";
       $("uploadForm").hidden = memberMustChangePassword;
+      $("memberPasswordChange").hidden = !memberMustChangePassword;
+      $("showMemberPasswordChange").hidden = memberMustChangePassword;
+      $("cancelMemberPasswordChange").hidden = memberMustChangePassword;
       status("memberStatus", memberMustChangePassword
         ? "Change your temporary password before uploading."
         : "Signed in. Posts are visible to visitors of the class archive.");
@@ -81,10 +84,49 @@
     memberToken = "";
     memberMustChangePassword = false;
     $("memberSessionActions").hidden = true;
+    $("memberPasswordChange").hidden = true;
+    $("memberPasswordChange").reset();
+    $("showMemberPasswordChange").hidden = false;
+    $("cancelMemberPasswordChange").hidden = false;
     $("uploadForm").hidden = true;
     $("memberLogin").hidden = false;
     $("uploadForm").reset();
     status("memberStatus", "Signed out.");
+  });
+  $("showMemberPasswordChange").addEventListener("click", () => {
+    $("memberPasswordChange").hidden = false;
+    $("cancelMemberPasswordChange").hidden = false;
+  });
+  $("cancelMemberPasswordChange").addEventListener("click", () => {
+    if (memberMustChangePassword) return;
+    $("memberPasswordChange").reset();
+    $("memberPasswordChange").hidden = true;
+  });
+  $("memberPasswordChange").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const currentPassword = $("memberCurrentPassword").value;
+    const newPassword = $("memberNewPassword").value;
+    if (newPassword !== $("memberConfirmPassword").value) {
+      status("memberStatus", "The new password and confirmation do not match.");
+      return;
+    }
+    if (newPassword.length < 12) {
+      status("memberStatus", "Choose a password with at least 12 characters.");
+      return;
+    }
+    try {
+      await api("/api/account/password", {
+        method:"POST", body:JSON.stringify({currentPassword,newPassword})
+      }, memberToken);
+      memberToken = "";
+      memberMustChangePassword = false;
+      $("memberSessionActions").hidden = true;
+      $("memberPasswordChange").reset();
+      $("memberPasswordChange").hidden = true;
+      $("uploadForm").hidden = true;
+      $("memberLogin").hidden = false;
+      status("memberStatus", "Password changed and all sessions revoked. Please sign in again.");
+    } catch (error) { status("memberStatus", error.message); }
   });
   $("uploadForm").addEventListener("submit", async (event) => {
     event.preventDefault();
