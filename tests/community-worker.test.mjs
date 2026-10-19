@@ -71,3 +71,65 @@ test("reports unavailable storage instead of claiming the API is healthy", async
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), { error: "Internal server error." });
 });
+
+function authenticatedEnv(user) {
+  return {
+    ...env,
+    DB: {
+      prepare() {
+        return {
+          bind() {
+            return {
+              first: async () => user,
+              run: async () => ({ success: true })
+            };
+          }
+        };
+      }
+    }
+  };
+}
+
+const memberSession = {
+  id: 7,
+  username: "class-members",
+  display_name: "Class Members",
+  role: "member",
+  disabled: 0,
+  must_change_password: 0,
+  expires_at: 4_000_000_000
+};
+
+test("protected upload route rejects missing authentication", async () => {
+  const response = await worker.fetch(request("/api/content", {
+    method: "POST",
+    headers: { Origin: origin }
+  }), env);
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Please sign in." });
+});
+
+test("member session cannot access administrator-only content", async () => {
+  const response = await worker.fetch(request("/api/admin/content", {
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "a".repeat(64)
+    }
+  }), authenticatedEnv(memberSession));
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), { error: "You do not have permission to do that." });
+});
+
+test("temporary-password accounts cannot upload before changing their password", async () => {
+  const response = await worker.fetch(request("/api/content", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "b".repeat(64)
+    }
+  }), authenticatedEnv({ ...memberSession, must_change_password: 1 }));
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), {
+    error: "Change your temporary password before continuing."
+  });
+});
