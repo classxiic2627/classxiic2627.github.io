@@ -75,7 +75,7 @@ jobs:
           connection = sqlite3.connect(":memory:")
           schema = Path("backend/schema.sql").read_text(encoding="utf-8")
           connection.executescript(schema)
-          expected = {"users", "sessions", "content", "announcements", "push_subscriptions"}
+          expected = {"users", "sessions", "content", "announcements", "push_subscriptions", "auth_attempts"}
           actual = {
               row[0] for row in connection.execute(
                   "SELECT name FROM sqlite_master WHERE type='table'"
