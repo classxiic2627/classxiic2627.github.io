@@ -983,6 +983,61 @@ test("throttles repeated initial-setup attempts", async () => {
   });
 });
 
+test("valid setup-secret retries after initialization remain throttled without rehashing passwords", async () => {
+  const reservations = [];
+  let nextId = 0;
+  let userInsertAttempts = 0;
+  const setupSecret = "a-long-random-setup-secret-for-testing";
+  const setupEnv = {
+    ...env,
+    SETUP_SECRET: setupSecret,
+    DB: {
+      prepare(sql) {
+        return {
+          first: async () => sql.includes("SELECT 1 AS present FROM users LIMIT 1") ? { present: 1 } : null,
+          bind(...values) {
+            return {
+              first: async () => sql.includes("SELECT 1 AS present FROM users LIMIT 1") ? { present: 1 } : null,
+              run: async () => {
+                if (sql.includes("INSERT INTO auth_attempts")) {
+                  const keyHash = values[2];
+                  const cutoff = values[3];
+                  const limit = values[4];
+                  const active = reservations.filter(item => item.keyHash === keyHash && item.attemptedAt > cutoff).length;
+                  if (active >= limit) return { success: true, meta: { changes: 0 } };
+                  const item = { id: ++nextId, keyHash: values[0], attemptedAt: values[1] };
+                  reservations.push(item);
+                  return { success: true, meta: { changes: 1, last_row_id: item.id } };
+                }
+                if (sql.includes("INSERT INTO users")) userInsertAttempts++;
+                return { success: true, meta: { changes: 0, last_row_id: ++nextId } };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+
+  const responses = [];
+  for (let i = 0; i < 11; i++) {
+    responses.push(await worker.fetch(new Request("https://api.example.test/api/setup", {
+      method: "POST",
+      headers: {
+        Origin: origin,
+        "CF-Connecting-IP": "203.0.113.52",
+        "Content-Type": "application/json",
+        "X-Setup-Secret": setupSecret
+      },
+      body: JSON.stringify({ adminUsername: "archive-admin", adminEmail: "admin@example.test", adminPassword: "a-long-test-password-for-admin" })
+    }), setupEnv));
+  }
+  assert.equal(responses.slice(0, 10).filter(response => response.status === 409).length, 10);
+  assert.equal(responses[10].status, 429);
+  assert.equal(reservations.length, 10);
+  assert.equal(userInsertAttempts, 0, "completed setup should short-circuit before PBKDF2 and insert");
+});
+
 test("rejects disallowed upload MIME types before writing to media storage", async () => {
   let mediaWrites = 0;
   const uploadEnv = {
