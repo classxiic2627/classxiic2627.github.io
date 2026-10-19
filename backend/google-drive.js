@@ -165,7 +165,7 @@ export function createGoogleDriveMedia(env, fetchImpl = fetch) {
       // Never forward the OAuth bearer token to an untrusted Location URL.
       if (sessionUrl.protocol !== "https:" ||
           sessionUrl.origin !== new URL(DRIVE_UPLOAD).origin ||
-          !sessionUrl.pathname.startsWith("/upload/drive/v3/files")) {
+          sessionUrl.pathname !== "/upload/drive/v3/files") {
         providerError("Google Drive returned an invalid upload session URL.");
       }
 
