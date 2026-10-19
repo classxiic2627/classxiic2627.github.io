@@ -139,6 +139,37 @@ async function readJson(request) {
   const bytes = await readLimitedBody(request, MAX_JSON_BYTES, "Request body is too large.");
   try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { fail("Invalid JSON."); }
 }
+async function readLimitedFormData(request, maxBytes, message) {
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength && /^\\d+$/.test(declaredLength) && Number(declaredLength) > maxBytes) fail(message, 413);
+  if (!request.body) fail("Invalid upload form.");
+  let total = 0;
+  let tooLarge = false;
+  const limitedBody = request.body.pipeThrough(new TransformStream({
+    transform(chunk, controller) {
+      total += chunk.byteLength;
+      if (total > maxBytes) {
+        tooLarge = true;
+        throw new Error("Upload body exceeded its limit.");
+      }
+      controller.enqueue(chunk);
+    }
+  }));
+  const headers = new Headers(request.headers);
+  headers.delete("content-length");
+  try {
+    const boundedRequest = new Request(request.url, {
+      method: request.method,
+      headers,
+      body: limitedBody,
+      duplex: "half"
+    });
+    return await boundedRequest.formData();
+  } catch {
+    if (tooLarge) fail(message, 413);
+    fail("Invalid upload form.");
+  }
+}
 async function matchesMediaSignature(file, mime) {
   const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
   const ascii = (start, end) => String.fromCharCode(...bytes.slice(start, end));
@@ -460,17 +491,13 @@ async function handle(request, env) {
     const user = await auth(request, env);
     await requireChangedPassword(user);
     const mediaStore = driveStorage(env);
-    // Bound the complete multipart request before parsing it. Content-Length is
-    // only an early-rejection hint; the streamed byte count is authoritative.
-    const uploadBody = await readLimitedBody(request, MAX_UPLOAD_REQUEST_BYTES, "Upload request exceeds the 50 MB media limit.");
-    const boundedRequest = new Request(request.url, {
-      method: request.method,
-      headers: request.headers,
-      body: uploadBody
-    });
-    let form;
-    try { form = await boundedRequest.formData(); }
-    catch { fail("Invalid upload form."); }
+    // Count request bytes as the multipart parser consumes the stream; avoid
+    // buffering a 50 MiB video and then copying the full request in memory.
+    const form = await readLimitedFormData(
+      request,
+      MAX_UPLOAD_REQUEST_BYTES,
+      "Upload request exceeds the 50 MB media limit."
+    );
     const type = form.get("type");
     const title = cleanText(form.get("title"), 120, "Title", true);
     const caption = cleanText(form.get("caption"), 1000, "Caption");
