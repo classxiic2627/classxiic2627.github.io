@@ -156,6 +156,7 @@ test("member upload sends validated bytes to Drive and stores only the Drive fil
     assert.equal(target, "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=adapter-session");
     assert.equal(options.method, "PUT");
     assert.equal(options.headers["Content-Range"], "bytes 0-7/8");
+    assert.equal(options.headers["Content-Length"], "8");
     const uploaded = new Uint8Array(await new Response(options.body).arrayBuffer());
     assert.equal(uploaded.length, 8);
     return new Response(JSON.stringify({
