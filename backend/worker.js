@@ -201,11 +201,16 @@ async function handle(request, env) {
   }
   if (request.method === "POST" && path === "/api/account/password") {
     const user = await auth(request, env);
+    const attemptKey = await rateLimitKey(request, env, "password-change:" + user.id);
     const body = await readJson(request);
     if (typeof body.currentPassword !== "string" || body.currentPassword.length > 256 || !validPassword(body.newPassword)) fail("Current password must be valid and the new password must be at least 12 characters.");
     const row = await env.DB.prepare("SELECT password_hash FROM users WHERE id=?").bind(user.id).first();
     const [salt, hash] = row.password_hash.split("$");
-    if (!(await verifyPassword(body.currentPassword, salt, hash))) fail("Current password is incorrect.", 401);
+    if (!(await verifyPassword(body.currentPassword, salt, hash))) {
+      await recordFailedAttempt(env, attemptKey);
+      fail("Current password is incorrect.", 401);
+    }
+    await clearFailedAttempts(env, attemptKey);
     const h = await passwordHash(body.newPassword);
     await env.DB.prepare("UPDATE users SET password_hash=?,must_change_password=0,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?")
       .bind(h.salt + "$" + h.hash, user.id).run();
