@@ -377,6 +377,33 @@ test("member session cannot access administrator-only content", async () => {
   assert.deepEqual(await response.json(), { error: "You do not have permission to do that." });
 });
 
+test("disabled member sessions are rejected and removed", async () => {
+  const statements = [];
+  const disabledEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql,values,
+              first:async()=>({...memberSession,disabled:1}),
+              run:async()=>{statements.push({sql,values});return {success:true};}
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(request("/api/content", {
+    headers:{Origin:origin,Authorization:"Bearer " + "d".repeat(64)}
+  }),disabledEnv);
+  assert.equal(response.status,401);
+  assert.deepEqual(await response.json(),{error:"Session expired. Please sign in again."});
+  assert.ok(statements.some(item=>item.sql.includes("DELETE FROM sessions WHERE token_hash=?")));
+});
+
 test("temporary-password accounts cannot upload before changing their password", async () => {
   const response = await worker.fetch(request("/api/content", {
     method: "POST",
