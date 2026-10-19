@@ -137,4 +137,4 @@ Before any approved migration:
 - [ ] Verify staging end-to-end with isolated D1 and Drive resources, exact CORS/API origin, Cron Trigger, and edge rate limits.
 - [ ] Obtain explicit owner approval before merge/deployment or any production action.
 
-**Current decision: BLOCKED pending the unchecked evidence and owner decisions above.** The current code head is not CI-green. Even after tests pass, automated CI and isolated local D1 smoke do not prove real Google Drive access, Cloudflare staging readiness, or permission to launch.
+**Current decision: BLOCKED pending the unchecked evidence and owner decisions above.** The current code head is CI-green. Automated CI and isolated local D1 smoke still do not prove real Google Drive access, Cloudflare staging readiness, or permission to launch.
