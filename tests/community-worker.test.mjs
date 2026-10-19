@@ -230,3 +230,30 @@ test("records failed credential checks for login throttling", async () => {
   assert.equal(response.status, 401);
   assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO auth_attempts")));
 });
+
+test("rejects null login payloads as client errors", async () => {
+  const loginEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        assert.match(sql, /FROM auth_attempts/);
+        return {
+          bind() {
+            return { first: async () => ({ n: 0 }) };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/member/login", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.44",
+      "Content-Type": "application/json"
+    },
+    body: "null"
+  }), loginEnv);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Invalid request body." });
+});
