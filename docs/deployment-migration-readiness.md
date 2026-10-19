@@ -2,18 +2,18 @@
 
 **Status:** Review-only; not deployment approval  
 **Reviewed branch:** `feature/community-security-foundation`  
-**Reviewed commit:** `14b63ccb9068efdf6678d343440360f8c64bd2ec`  
+**Reviewed commit:** `68c7caaaf72f189c319178570f3c675c3f066b76`  
 **Pull request:** [#1 — Build the Community Hub API and secure upload foundation](https://github.com/classxiic2627/classxiic2627.github.io/pull/1)
 
 ## Executive decision
 
-**Do not launch or modify a production D1 database yet.** The latest code/test head `14b63ccb9068efdf6678d343440360f8c64bd2ec` includes a setup-throttling fix whose exact-head Actions runs are still queued; the previous feature head `409d8afed020e31f2387325ce3094c0807cdbd28` passed 61/61 tests. Live database compatibility, production bindings, API configuration, storage readiness, and recovery evidence have not been established.
+**Do not launch or modify a production D1 database yet.** Code/test head `14b63ccb9068efdf6678d343440360f8c64bd2ec` includes the setup-throttling fix and its exact-head Actions runs remain queued. The current feature head `68c7caa` makes a workflow-only change to avoid duplicate push-triggered checks on the feature branch; its exact-head PR run [39280766792](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39280766792) is also queued. The previous code/test head `409d8afed020e31f2387325ce3094c0807cdbd28` passed 61/61 tests. Live database compatibility, production bindings, API configuration, storage readiness, and recovery evidence have not been established.
 
 This document is an evidence checklist and proposed plan only. It does not authorize provisioning, deployment, migration, account initialization, or changes to live data.
 
 ## 1. What is verified in the repository
 
-At reviewed commit `14b63ccb9068efdf6678d343440360f8c64bd2ec` (the latest inspected feature head):
+At reviewed code/test commit `14b63ccb9068efdf6678d343440360f8c64bd2ec` (with workflow-only follow-up at `68c7caa`):
 
 - `backend/worker.js` implements the Cloudflare Worker API.
 - `backend/schema.sql` defines `users`, `sessions`, `content`, `announcements`, `push_subscriptions`, and `auth_attempts`.
@@ -28,7 +28,7 @@ At reviewed commit `14b63ccb9068efdf6678d343440360f8c64bd2ec` (the latest inspec
 
 ### CI evidence
 
-The previous feature head `409d8afed020e31f2387325ce3094c0807cdbd28` passed Actions run [39277913558](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39277913558) with **61/61 automated tests**, frontend/Worker/service-worker syntax, 50 DOM-reference checks, schema/initial-migration parity, and Wrangler template/TOML checks, including the cross-IP account-throttle regression. Current code/test head `14b63ccb9068efdf6678d343440360f8c64bd2ec` adds a setup-throttle timing fix and regression tests. At the time of this refresh, exact-head Actions runs [39278956384](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39278956384) and [39278963620](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39278963620) are queued, so the newest fix is not yet CI-verified.
+The previous feature head `409d8afed020e31f2387325ce3094c0807cdbd28` passed Actions run [39277913558](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39277913558) with **61/61 automated tests**, frontend/Worker/service-worker syntax, 50 DOM-reference checks, schema/initial-migration parity, and Wrangler template/TOML checks, including the cross-IP account-throttle regression. Code/test head `14b63ccb9068efdf6678d343440360f8c64bd2ec` adds a setup-throttle timing fix and regression tests. Exact-head Actions runs [39278956384](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39278956384) and [39278963620](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39278963620) remain queued, so that fix is not yet CI-verified. Workflow-only head `68c7caaaf72f189c319178570f3c675c3f066b76` removes the feature branch from the `push` trigger while retaining `pull_request` checks and `main` push checks; its exact-head run [39280766792](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39280766792) is queued. This reduces future duplicate runs but does not clear already queued older runs.
 
 The previous head `4048b578` had two failed runs because a legacy login-throttle test omitted `username` and therefore exercised malformed-input handling (expected `429`, received `400`). The handler was adjusted to reserve the IP slot before parsing malformed payloads; head `5e8dc240` passed 60/60, the next head added cross-IP coverage and passed 61/61, and the latest setup-throttle fix head `14b63ccb` is awaiting its exact-head run. Treat only the run attached to the exact release SHA as release evidence.
 
@@ -36,7 +36,7 @@ The feature includes streamed request-size enforcement, basic media-signature ch
 
 This is evidence of repository-level checks only. It is **not** proof of compatibility with the actual D1 database or a deployed Worker/R2 environment.
 
-PR #1 remains open and unmerged. The latest inspected feature head is `14b63ccb9068efdf6678d343440360f8c64bd2ec`; always retest the exact release commit. No live Cloudflare environment has been tested by this review.
+PR #1 remains open and unmerged. The latest inspected feature head is `68c7caaaf72f189c319178570f3c675c3f066b76` (workflow-only change on top of code/test head `14b63ccb9068efdf6678d343440360f8c64bd2ec`); always retest the exact release commit. No live Cloudflare environment has been tested by this review.
 
 ## 2. D1 inventory required before migration design
 
