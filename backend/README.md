@@ -8,7 +8,7 @@ The account model is **individual accounts**, not one shared class password:
 
 - One-time `POST /api/setup` initializes the first administrator. The JSON body requires `adminUsername`, `adminEmail`, and `adminPassword`; `adminDisplayName` is optional.
 - `POST /api/admin/login` and `POST /api/member/login` accept `{ "username": "...", "password": "..." }`.
-- Public registration is not provided. An authenticated administrator provisions each member with a unique username, required unique email, display name, and temporary password.
+- Public registration is not provided. An authenticated administrator provisions each member with a unique username, required unique email, display name, and temporary password. Email addresses are admin-entered identifiers; this prototype does not verify email ownership, send email, or provide email-based password recovery.
 - Newly provisioned or password-reset member accounts must change their temporary password before using protected features.
 - Members may change their own password through `POST /api/account/password`, providing `currentPassword` and `newPassword`. Password changes revoke the account's sessions; the user must sign in again.
 - The administrator can list members, update their profile fields, disable/re-enable accounts, reset temporary passwords, and revoke sessions through the `/api/admin/users` routes. Disabling an account must prevent its existing sessions from being used.
