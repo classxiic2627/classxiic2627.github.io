@@ -51,6 +51,33 @@ async function withFetch(mockFetch, action) {
   }
 }
 
+async function withFixedLengthStream(action) {
+  const original = globalThis.FixedLengthStream;
+  class TestFixedLengthStream {
+    constructor(length) {
+      let total = 0;
+      const stream = new TransformStream({
+        transform(chunk, controller) {
+          total += chunk.byteLength;
+          if (total > length) throw new Error("Fixed-length stream received too many bytes.");
+          controller.enqueue(chunk);
+        },
+        flush() {
+          if (total !== length) throw new Error("Fixed-length stream received too few bytes.");
+        }
+      });
+      this.readable = stream.readable;
+      this.writable = stream.writable;
+    }
+  }
+  globalThis.FixedLengthStream = TestFixedLengthStream;
+  try { return await action(); }
+  finally {
+    if (original === undefined) delete globalThis.FixedLengthStream;
+    else globalThis.FixedLengthStream = original;
+  }
+}
+
 function oauthResponse() {
   return new Response(JSON.stringify({ access_token: "unit-test-access-token", expires_in: 3600 }), {
     status: 200,
@@ -112,7 +139,7 @@ test("member upload sends validated bytes to Drive and stores only the Drive fil
     type: "image/png"
   }));
 
-  const response = await withFetch(async (url, options = {}) => {
+  const response = await withFixedLengthStream(() => withFetch(async (url, options = {}) => {
     const target = String(url);
     if (target === "https://oauth2.googleapis.com/token") return oauthResponse();
     assert.equal(options.headers.Authorization, "Bearer unit-test-access-token");
@@ -142,7 +169,7 @@ test("member upload sends validated bytes to Drive and stores only the Drive fil
     method: "POST",
     headers: { Authorization: "Bearer test-session-token", Origin: origin },
     body: form
-  }), env));
+  }), env)));
 
   assert.equal(response.status, 201);
   assert.match(uploadedBody, /"parents":\["folder_test-123"\]/);
