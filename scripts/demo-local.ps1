@@ -6,6 +6,23 @@ if ($PSVersionTable.PSVersion.Major -lt 5) { throw "PowerShell 5 or newer is req
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw "Install Node.js 22+ first." }
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) { throw "Python is required to serve the existing static site." }
 
+# Fail before touching even the isolated local D1 if fixed demo ports are occupied.
+# This prevents the readiness probe from accidentally talking to an unrelated service.
+function Assert-LocalPortAvailable([int]$Port) {
+  $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+  $started = $false
+  try {
+    $listener.Start()
+    $started = $true
+  } catch {
+    throw "Port $Port is already in use on 127.0.0.1. Stop the conflicting local service and retry; no demo server was started."
+  } finally {
+    if ($started) { $listener.Stop() }
+  }
+}
+Assert-LocalPortAvailable 8787
+Assert-LocalPortAvailable 8000
+
 $configPath = Join-Path $root "wrangler.local.toml"
 if (-not (Test-Path $configPath)) {
   Copy-Item (Join-Path $root "wrangler.local.example.toml") $configPath
@@ -56,10 +73,14 @@ try {
   $ready = $false
   for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 1
+    # Never treat a response from another process as proof that our Worker started.
+    if ($worker.HasExited) { break }
     try {
       $null = Invoke-WebRequest -Uri "http://127.0.0.1:8787/api/announcements" -TimeoutSec 2 -UseBasicParsing
-      $ready = $true
-      break
+      if (-not $worker.HasExited) {
+        $ready = $true
+        break
+      }
     } catch {
       if ($worker.HasExited) { break }
     }
