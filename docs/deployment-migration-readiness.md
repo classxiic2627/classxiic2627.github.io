@@ -98,6 +98,7 @@ Adapt these to the actual schema; do not run modifying SQL during inventory.
 - [ ] Decide how scheduled cleanup is configured and verify expired sessions and old authentication-attempt records are cleaned up.
 - [ ] Verify deployment permissions, review requirements, monitoring, and a clear owner for incidents and account administration.
 - [x] **Application-level concurrent-auth-throttling race addressed in the reviewed feature head.** The Worker now reserves a slot with one conditional D1 `INSERT ... SELECT` before login/setup/password verification and deletes only that request's reservation after successful verification. A concurrency regression test launches 20 same-IP login failures and verifies 10 reach credential verification while 10 receive `429`; CI also exercises the SQL threshold in SQLite. This is repository/mock evidence, not proof of real D1 concurrency behavior. Keep edge-level rate limiting as defense in depth and verify both controls in staging before public launch.
+- [ ] **Review shared-IP lockout policy before launch.** The current atomic throttle uses one bucket per IP and role, so 10 failed member logins from a shared school/NAT IP can block all member accounts behind that IP for the 15-minute window. Consider a layered IP ceiling plus per-account bucket, tune recovery behavior, and add a test for distinct users behind one IP; avoid storing raw usernames in throttle keys/logs.
 - [ ] Confirm current Cloudflare pricing/limits and avoid creating paid resources without explicit approval.
 
 ## 6. Staging acceptance tests
