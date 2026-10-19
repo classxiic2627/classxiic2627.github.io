@@ -1028,6 +1028,49 @@ test("successful member login creates a hashed, expiring session", async () => {
   assert.ok(sessionInsert.values[2] > sessionInsert.values[3]);
 });
 
+test("member can replace a temporary password and atomically revoke all sessions", async () => {
+  const currentPassword = "temporary-password-for-member";
+  const newPassword = "permanent-password-for-member";
+  const salt = new Uint8Array(16).fill(23);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(currentPassword), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt,iterations:210000},key,256);
+  const passwordHash = Buffer.from(salt).toString("base64") + "$" + Buffer.from(bits).toString("base64");
+  const statements = [];
+  const user = {...memberSession,must_change_password:1};
+  const passwordEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql,values,
+              first:async()=>{
+                if (sql.includes("FROM sessions s JOIN users")) return user;
+                if (sql.includes("FROM auth_attempts")) return {n:0};
+                if (sql.includes("SELECT password_hash FROM users")) return {password_hash:passwordHash};
+                return null;
+              },
+              run:async()=>{statements.push({sql,values});return {success:true};}
+            };
+          }
+        };
+      },
+      async batch(items) { statements.push(...items.map(item=>({sql:item.sql,values:item.values}))); return items.map(()=>({success:true})); }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/account/password", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer " + "p".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({currentPassword,newPassword})
+  }),passwordEnv);
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{ok:true,message:"Password changed. All sessions were revoked; please sign in again."});
+  assert.ok(statements.some(item=>item.sql.includes("UPDATE users SET password_hash=?,must_change_password=0")));
+  assert.ok(statements.some(item=>item.sql.includes("DELETE FROM sessions WHERE user_id=?")));
+});
+
 test("admin with a temporary password cannot access account management before changing it", async () => {
   const response = await worker.fetch(request("/api/admin/users", {
     headers: {Origin:origin,Authorization:"Bearer " + "o".repeat(64)}
