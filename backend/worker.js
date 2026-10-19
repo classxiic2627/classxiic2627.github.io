@@ -181,7 +181,7 @@ async function handle(request, env) {
     const memberPassword = body.memberPassword;
     if (!/^[a-zA-Z0-9._-]{3,64}$/.test(adminUsername)) fail("Admin username must be 3–64 letters, numbers, dots, underscores or hyphens.");
     if (adminUsername.toLowerCase() === "class-members") fail("Choose a different admin username; that username is reserved for the class member account.");
-    if (!validPassword(adminPassword) || !validPassword(memberPassword)) fail("Both passwords must be at least 12 characters.");
+    if (!validPassword(adminPassword) || !validPassword(memberPassword)) fail("Both passwords must be at least 12 non-blank characters.");
     if (adminPassword === memberPassword) fail("Admin and member passwords must be different.");
     const adminHash = await passwordHash(adminPassword);
     const memberHash = await passwordHash(memberPassword);
@@ -209,7 +209,7 @@ async function handle(request, env) {
     const attemptKey = await rateLimitKey(request, env, "password-change:" + user.id);
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
-    if (typeof body.currentPassword !== "string" || body.currentPassword.length > 256 || !validPassword(body.newPassword)) fail("Current password must be valid and the new password must be at least 12 characters.");
+    if (typeof body.currentPassword !== "string" || body.currentPassword.length > 256 || !validPassword(body.newPassword)) fail("Current password must be valid and the new password must be at least 12 non-blank characters.");
     const row = await env.DB.prepare("SELECT password_hash FROM users WHERE id=?").bind(user.id).first();
     const [salt, hash] = row.password_hash.split("$");
     if (!(await verifyPassword(body.currentPassword, salt, hash))) {
@@ -231,7 +231,7 @@ async function handle(request, env) {
     await requireChangedPassword(admin);
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
-    if (!validPassword(body.newPassword)) fail("The new class upload password must be at least 12 characters.");
+    if (!validPassword(body.newPassword)) fail("The new class upload password must be at least 12 characters and cannot be blank.");
     const member = await env.DB.prepare(
       "SELECT id FROM users WHERE username=? AND role='member'"
     ).bind("class-members").first();
