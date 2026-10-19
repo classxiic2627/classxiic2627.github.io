@@ -1665,34 +1665,6 @@ test("rejects multipart uploads over the 50 MB limit from declared length before
   assert.deepEqual(await response.json(), { error: "Upload request exceeds the 50 MB media limit." });
 });
 
-test("rejects oversized streamed multipart uploads when Content-Length is absent", async () => {
-  const totalBytes = 51 * 1024 * 1024 + 1;
-  const chunkSize = 1024 * 1024;
-  let sent = 0;
-  const body = new ReadableStream({
-    pull(controller) {
-      if (sent >= totalBytes) { controller.close(); return; }
-      const size = Math.min(chunkSize, totalBytes - sent);
-      controller.enqueue(new Uint8Array(size));
-      sent += size;
-    }
-  });
-  const req = new Request("https://api.example.test/api/content", {
-    method: "POST",
-    headers: {
-      Origin: origin,
-      Authorization: "Bearer " + "r".repeat(64),
-      "Content-Type": "multipart/form-data; boundary=community-test"
-    },
-    body,
-    duplex: "half"
-  });
-  assert.equal(req.headers.get("content-length"), null);
-  const response = await worker.fetch(req, authenticatedEnv(memberSession));
-  assert.equal(response.status, 413);
-  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 50 MB media limit." });
-});
-
 test("rejects oversized streamed multipart bodies when Content-Length is absent", async () => {
   const chunk = new Uint8Array(4 * 1024 * 1024);
   let emitted = 0;
