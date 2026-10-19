@@ -201,6 +201,7 @@ async function handle(request, env) {
   }
   if (request.method === "POST" && path === "/api/account/password") {
     const user = await auth(request, env);
+    if (user.role !== "admin") fail("The shared class upload password is managed by the administrator.", 403);
     const attemptKey = await rateLimitKey(request, env, "password-change:" + user.id);
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
@@ -217,6 +218,25 @@ async function handle(request, env) {
       .bind(h.salt + "$" + h.hash, user.id).run();
     await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id).run();
     return json({ok:true, message:"Password changed. Please sign in again."}, 200, env.ALLOWED_ORIGIN);
+  }
+
+  if (request.method === "POST" && path === "/api/admin/member-password") {
+    const admin = await auth(request, env, "admin");
+    await requireChangedPassword(admin);
+    const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
+    if (!validPassword(body.newPassword)) fail("The new class upload password must be at least 12 characters.");
+    const member = await env.DB.prepare(
+      "SELECT id FROM users WHERE username=? AND role='member'"
+    ).bind("class-members").first();
+    if (!member) fail("Class member account not found.", 404);
+    const h = await passwordHash(body.newPassword);
+    await env.DB.batch([
+      env.DB.prepare("UPDATE users SET password_hash=?,must_change_password=0,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?")
+        .bind(h.salt + "$" + h.hash, member.id),
+      env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(member.id)
+    ]);
+    return json({ok:true, message:"Class upload password rotated. Share it with members through a trusted class channel."}, 200, env.ALLOWED_ORIGIN);
   }
 
   if (request.method === "GET" && path === "/api/content") {
