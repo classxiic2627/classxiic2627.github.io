@@ -66,6 +66,7 @@
       const data = await api("/api/member/login", {method:"POST", body:JSON.stringify({password:$("memberPassword").value})});
       memberToken = data.token;
       memberMustChangePassword = !!data.mustChangePassword;
+      $("memberSessionActions").hidden = false;
       $("memberLogin").hidden = true;
       $("memberPassword").value = "";
       $("memberPasswordChange").hidden = !memberMustChangePassword;
@@ -80,6 +81,7 @@
     try { if (memberToken) await api("/api/logout", {method:"POST"}, memberToken); } catch (_) {}
     memberToken = "";
     memberMustChangePassword = false;
+    $("memberSessionActions").hidden = true;
     $("uploadForm").hidden = true;
     $("memberPasswordChange").hidden = true;
     $("memberLogin").hidden = false;
@@ -115,6 +117,7 @@
       }, memberToken);
       memberToken = "";
       memberMustChangePassword = false;
+      $("memberSessionActions").hidden = true;
       $("memberPasswordChange").reset();
       $("memberPasswordChange").hidden = true;
       $("uploadForm").hidden = true;
@@ -149,6 +152,7 @@
       })});
       adminToken = data.token;
       adminMustChangePassword = !!data.mustChangePassword;
+      $("adminSessionActions").hidden = false;
       $("adminLogin").hidden = true;
       $("adminPassword").value = "";
       $("adminPasswordChange").hidden = !adminMustChangePassword;
@@ -214,6 +218,7 @@
       }, adminToken);
       adminToken = "";
       adminMustChangePassword = false;
+      $("adminSessionActions").hidden = true;
       $("adminPasswordChange").reset();
       $("adminPasswordChange").hidden = true;
       $("adminArea").hidden = true;
@@ -236,6 +241,7 @@
     try { if (adminToken) await api("/api/logout", {method:"POST"}, adminToken); } catch (_) {}
     adminToken = "";
     adminMustChangePassword = false;
+    $("adminSessionActions").hidden = true;
     $("adminPasswordChange").hidden = true;
     $("adminPasswordChange").reset();
     $("adminArea").hidden = true;
