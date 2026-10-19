@@ -452,3 +452,35 @@ test("rejects null password-change payloads as client errors", async () => {
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "Invalid request body." });
 });
+
+test("rejects and removes expired sessions", async () => {
+  const statements = [];
+  const expiredSession = { ...memberSession, expires_at: 1 };
+  const expiredEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first: async () => expiredSession,
+              run: async () => {
+                statements.push({ sql, values });
+                return { success: true };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/content", {
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "f".repeat(64)
+    }
+  }), expiredEnv);
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Session expired. Please sign in again." });
+  assert.ok(statements.some(({ sql }) => sql.includes("DELETE FROM sessions")));
+});
