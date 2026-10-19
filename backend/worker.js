@@ -141,7 +141,7 @@ async function readJson(request) {
 }
 async function readLimitedFormData(request, maxBytes, message) {
   const declaredLength = request.headers.get("content-length");
-  if (declaredLength && /^\\d+$/.test(declaredLength) && Number(declaredLength) > maxBytes) fail(message, 413);
+  if (declaredLength && Number.isFinite(Number(declaredLength)) && Number(declaredLength) > maxBytes) fail(message, 413);
   if (!request.body) fail("Invalid upload form.");
   let total = 0;
   let tooLarge = false;
