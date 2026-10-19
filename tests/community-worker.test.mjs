@@ -186,6 +186,7 @@ test("admin account list returns only member records with boolean status flags",
       prepare(sql) {
         return {
           sql,
+          first:async()=> null,
           bind(...values) {
             return {sql,values,first:async()=>adminSession};
           },
