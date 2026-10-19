@@ -1,12 +1,14 @@
 /**
  * Class XII C Community Archive API — Cloudflare Worker.
  *
- * Required bindings:
+ * Required bindings/configuration:
  *   DB: Cloudflare D1 database
- *   MEDIA: Cloudflare R2 bucket
+ *   GOOGLE_SERVICE_ACCOUNT_EMAIL: dedicated Google service account email
+ *   GOOGLE_PRIVATE_KEY: service-account private key (Worker secret)
+ *   GOOGLE_DRIVE_FOLDER_ID: dedicated Drive folder shared with the service account
  * Required secrets/vars:
  *   SETUP_SECRET (secret; long random value, used once to initialize accounts)
- *   ALLOWED_ORIGIN (exact HTTPS origin of the Pages site, e.g. https://example.pages.dev)
+ *   ALLOWED_ORIGIN (exact site origin)
  *   SESSION_TTL_SECONDS (optional; defaults to 12 hours)
  *
  * This API never ships credentials to the browser. Passwords are salted and
@@ -157,6 +159,152 @@ async function matchesMediaSignature(file, mime) {
       return false;
   }
 }
+
+let googleDriveTokenCache = { key: "", token: "", expiresAt: 0 };
+const GOOGLE_DRIVE_API = "https://www.googleapis.com/drive/v3";
+const GOOGLE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files";
+const GOOGLE_TOKEN_API = "https://oauth2.googleapis.com/token";
+const GOOGLE_DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
+
+function base64Url(value) {
+  const bytes = typeof value === "string" ? encoder.encode(value) : value;
+  return toB64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+function privateKeyBytes(value) {
+  const pem = String(value || "").replace(/\\n/g, "\n");
+  const body = pem.replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "").replace(/\s/g, "");
+  if (!body) fail("Google Drive private key is not configured.", 503);
+  try { return fromB64(body); }
+  catch { fail("Google Drive private key is invalid.", 503); }
+}
+async function googleDriveAccessToken(env, fetchImpl = fetch) {
+  const email = cleanText(env.GOOGLE_SERVICE_ACCOUNT_EMAIL, 254, "Google service account email", true);
+  const privateKey = env.GOOGLE_PRIVATE_KEY;
+  if (typeof privateKey !== "string" || !privateKey.trim()) fail("Google Drive credentials are not configured.", 503);
+  const keyId = email + ":" + await digest(privateKey);
+  const now = Math.floor(Date.now() / 1000);
+  if (googleDriveTokenCache.key === keyId && googleDriveTokenCache.token && googleDriveTokenCache.expiresAt > now + 60) {
+    return googleDriveTokenCache.token;
+  }
+  let signingKey;
+  try {
+    signingKey = await crypto.subtle.importKey(
+      "pkcs8", privateKeyBytes(privateKey),
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]
+    );
+  } catch {
+    fail("Google Drive private key could not be loaded.", 503);
+  }
+  const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const claims = base64Url(JSON.stringify({
+    iss: email,
+    scope: "https://www.googleapis.com/auth/drive",
+    aud: GOOGLE_TOKEN_API,
+    iat: now,
+    exp: now + 3600
+  }));
+  const signingInput = header + "." + claims;
+  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", signingKey, encoder.encode(signingInput));
+  const assertion = signingInput + "." + base64Url(new Uint8Array(signature));
+  let response;
+  try {
+    response = await fetchImpl(GOOGLE_TOKEN_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        assertion
+      })
+    });
+  } catch {
+    fail("Google OAuth token request failed.", 503);
+  }
+  if (!response.ok) fail("Google OAuth rejected the service-account credentials (" + response.status + ").", 503);
+  const data = await response.json().catch(() => null);
+  if (!data || typeof data.access_token !== "string" || !data.access_token || !Number.isFinite(Number(data.expires_in))) {
+    fail("Google OAuth returned an invalid token response.", 503);
+  }
+  googleDriveTokenCache = {
+    key: keyId,
+    token: data.access_token,
+    expiresAt: now + Math.max(60, Number(data.expires_in))
+  };
+  return data.access_token;
+}
+async function googleDriveRequest(env, url, options = {}, fetchImpl = fetch, allowStatuses = []) {
+  const token = await googleDriveAccessToken(env, fetchImpl);
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      ...options,
+      headers: { ...(options.headers || {}), Authorization: "Bearer " + token }
+    });
+  } catch {
+    fail("Google Drive request failed.", 503);
+  }
+  if (!response.ok && !allowStatuses.includes(response.status)) {
+    fail("Google Drive request failed (" + response.status + ").", 503);
+  }
+  return response;
+}
+function requireDriveFolder(env) {
+  const folderId = cleanText(env.GOOGLE_DRIVE_FOLDER_ID, 256, "Google Drive folder ID", true);
+  if (!/^[A-Za-z0-9_-]+$/.test(folderId)) fail("Google Drive folder ID is invalid.", 503);
+  return folderId;
+}
+async function checkGoogleDriveFolder(env, fetchImpl = fetch) {
+  const folderId = requireDriveFolder(env);
+  const response = await googleDriveRequest(env,
+    GOOGLE_DRIVE_API + "/files/" + encodeURIComponent(folderId) + "?fields=id,name,mimeType",
+    {}, fetchImpl);
+  const folder = await response.json().catch(() => null);
+  if (!folder || folder.id !== folderId || folder.mimeType !== GOOGLE_DRIVE_FOLDER_MIME) {
+    fail("Configured Google Drive storage target is not a folder accessible to the service account.", 503);
+  }
+  return folder;
+}
+async function uploadGoogleDriveFile(env, file, mime, itemId, fetchImpl = fetch) {
+  const folderId = requireDriveFolder(env);
+  const boundary = "community_" + crypto.randomUUID().replace(/-/g, "");
+  const metadata = {
+    name: "community-" + itemId,
+    mimeType: mime,
+    parents: [folderId],
+    appProperties: { communityItemId: itemId }
+  };
+  const prefix = encoder.encode("--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" +
+    JSON.stringify(metadata) + "\r\n--" + boundary + "\r\nContent-Type: " + mime + "\r\n\r\n");
+  const media = new Uint8Array(await file.arrayBuffer());
+  const suffix = encoder.encode("\r\n--" + boundary + "--");
+  const body = new Uint8Array(prefix.byteLength + media.byteLength + suffix.byteLength);
+  body.set(prefix, 0);
+  body.set(media, prefix.byteLength);
+  body.set(suffix, prefix.byteLength + media.byteLength);
+  const response = await googleDriveRequest(env,
+    GOOGLE_UPLOAD_API + "?uploadType=multipart&fields=id,name,mimeType,size,parents",
+    { method: "POST", headers: { "Content-Type": "multipart/related; boundary=" + boundary }, body },
+    fetchImpl);
+  const result = await response.json().catch(() => null);
+  if (!result || typeof result.id !== "string" || result.mimeType !== mime) {
+    fail("Google Drive did not confirm the uploaded file.", 503);
+  }
+  return result.id;
+}
+async function downloadGoogleDriveFile(env, fileId, fetchImpl = fetch) {
+  if (typeof fileId !== "string" || !/^[A-Za-z0-9_-]+$/.test(fileId)) fail("Media not found.", 404);
+  return googleDriveRequest(env,
+    GOOGLE_DRIVE_API + "/files/" + encodeURIComponent(fileId) + "?alt=media",
+    {}, fetchImpl, [404]);
+}
+async function deleteGoogleDriveFile(env, fileId, fetchImpl = fetch) {
+  if (typeof fileId !== "string" || !/^[A-Za-z0-9_-]+$/.test(fileId)) fail("Media storage reference is invalid.", 500);
+  const response = await googleDriveRequest(env,
+    GOOGLE_DRIVE_API + "/files/" + encodeURIComponent(fileId),
+    { method: "DELETE" }, fetchImpl, [404]);
+  if (!response.ok && response.status !== 404) fail("Google Drive file deletion failed.", 503);
+}
+
 async function auth(request, env, requiredRole = null) {
   const header = request.headers.get("Authorization") || "";
   const match = header.match(/^Bearer ([A-Za-z0-9_-]+)$/);
@@ -257,14 +405,14 @@ async function handle(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
   if (request.method === "GET" && path === "/api/health") {
-    if (!env.MEDIA) fail("Media storage is not configured.", 503);
     try {
       await env.DB.prepare("SELECT 1 AS ok").first();
-      await env.MEDIA.head("__community_health_check__");
-    } catch {
+      await checkGoogleDriveFolder(env);
+    } catch (error) {
+      if (Number(error?.status) === 503) throw error;
       fail("Storage health check failed.", 503);
     }
-    return json({ok:true, service:"class-archive-api", time:new Date().toISOString()}, 200, env.ALLOWED_ORIGIN);
+    return json({ok:true, service:"class-archive-api", storage:"google-drive", time:new Date().toISOString()}, 200, env.ALLOWED_ORIGIN);
   }
 
   if (request.method === "POST" && path === "/api/setup") {
@@ -430,7 +578,8 @@ async function handle(request, env) {
   if (request.method === "POST" && path === "/api/content") {
     const user = await auth(request, env, "member");
     await requireChangedPassword(user);
-    if (!env.MEDIA) fail("Media storage is not configured; uploads are unavailable.", 503);
+    requireDriveFolder(env);
+    if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_PRIVATE_KEY) fail("Google Drive credentials are not configured; uploads are unavailable.", 503);
     // Bound the complete multipart request before parsing it. Content-Length is
     // only an early-rejection hint; the streamed byte count is authoritative.
     const uploadBody = await readLimitedBody(request, MAX_UPLOAD_REQUEST_BYTES, "Upload request exceeds the 15 MB media limit.");
@@ -454,28 +603,28 @@ async function handle(request, env) {
     if (!allowed.includes(mime)) fail("File type does not match an allowed image/video type.");
     if (!(await matchesMediaSignature(file, mime))) fail("File contents do not match the selected media type.", 415);
     const itemId = id();
-    const key = "uploads/" + itemId;
-    await env.MEDIA.put(key, file.stream(), {httpMetadata:{contentType:mime, cacheControl:"private, no-store"}});
+    let driveFileId = null;
     try {
+      driveFileId = await uploadGoogleDriveFile(env, file, mime, itemId);
       await env.DB.prepare("INSERT INTO content(id,user_id,type,title,caption,media_key,media_mime,media_size) VALUES(?,?,?,?,?,?,?,?)")
-        .bind(itemId, user.id, type, title, caption, key, mime, file.size).run();
+        .bind(itemId, user.id, type, title, caption, driveFileId, mime, file.size).run();
     } catch (error) {
-      try { await env.MEDIA.delete(key); }
-      catch (cleanupError) {
-        // Preserve the D1 failure while recording the object key for later reconciliation.
-        console.error("Failed to clean up unreferenced media object", {key, error:String(cleanupError)});
+      if (driveFileId) {
+        try { await deleteGoogleDriveFile(env, driveFileId); }
+        catch (cleanupError) {
+          console.error("Failed to clean up unreferenced Google Drive file", {itemId, error:String(cleanupError)});
+        }
       }
       throw error;
     }
     return json({ok:true, id:itemId}, 201, env.ALLOWED_ORIGIN);
   }
   if (request.method === "GET" && path.startsWith("/api/media/")) {
-    if (!env.MEDIA) fail("Media storage is not configured.", 503);
     const itemId = decodeURIComponent(path.slice("/api/media/".length));
     const row = await env.DB.prepare("SELECT media_key,media_mime,media_size FROM content WHERE id=?").bind(itemId).first();
     if (!row) fail("Media not found.", 404);
-    const object = await env.MEDIA.get(row.media_key);
-    if (!object) fail("Media not found.", 404);
+    const object = await downloadGoogleDriveFile(env, row.media_key);
+    if (object.status === 404) fail("Media not found.", 404);
     const headers = new Headers({"Content-Type":row.media_mime,"X-Content-Type-Options":"nosniff","Cache-Control":"private, max-age=60","Content-Length":String(row.media_size)});
     if (env.ALLOWED_ORIGIN) for (const [key, value] of Object.entries(corsHeaders(env.ALLOWED_ORIGIN))) headers.set(key, value);
     return new Response(object.body,{headers});
@@ -488,14 +637,15 @@ async function handle(request, env) {
   }
   if (request.method === "DELETE" && path.startsWith("/api/admin/content/")) {
     const user = await auth(request, env, "admin"); await requireChangedPassword(user);
-    if (!env.MEDIA) fail("Media storage is not configured; deletion is unavailable.", 503);
+    requireDriveFolder(env);
+    if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_PRIVATE_KEY) fail("Google Drive credentials are not configured; deletion is unavailable.", 503);
     const itemId = decodeURIComponent(path.slice("/api/admin/content/".length));
     const row = await env.DB.prepare("SELECT media_key FROM content WHERE id=?").bind(itemId).first();
     if (!row) fail("Content not found.", 404);
-    // R2 and D1 cannot share a transaction. Delete the object first so an R2
-    // failure leaves the metadata row available for an admin retry. If the D1
-    // delete fails afterward, retrying the idempotent R2 delete can finish cleanup.
-    await env.MEDIA.delete(row.media_key);
+    // Google Drive and D1 cannot share a transaction. Delete the file first so a
+    // Drive failure leaves the metadata row available for an admin retry. Drive
+    // deletion is idempotent here: an already-missing file can still be reconciled.
+    await deleteGoogleDriveFile(env, row.media_key);
     await env.DB.prepare("DELETE FROM content WHERE id=?").bind(itemId).run();
     return json({ok:true}, 200, env.ALLOWED_ORIGIN);
   }
