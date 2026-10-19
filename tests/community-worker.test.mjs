@@ -1525,6 +1525,9 @@ test("successful member login creates a hashed, expiring session", async () => {
   assert.match(data.token, /^[0-9a-f]{64}$/);
   assert.equal(data.mustChangePassword, false);
   assert.equal(data.user.role, "member");
+  const reservationDelete = statements.find(({ sql }) => sql.includes("DELETE FROM auth_attempts WHERE id=? AND key_hash=?"));
+  assert.ok(reservationDelete, "successful login should delete only its own throttle reservation");
+  assert.equal(statements.some(({ sql }) => sql === "DELETE FROM auth_attempts WHERE key_hash=?"), false);
   const sessionInsert = statements.find(({ sql }) => sql.includes("INSERT INTO sessions"));
   assert.ok(sessionInsert);
   assert.notEqual(sessionInsert.values[0], data.token);
