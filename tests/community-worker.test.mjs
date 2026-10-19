@@ -624,3 +624,47 @@ test("admin member-password rotation enforces minimum password length", async ()
     error: "The new class upload password must be at least 12 characters."
   });
 });
+
+test("admin rotation hashes the shared password and revokes member sessions atomically", async () => {
+  const batches = [];
+  const rotationEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql,
+              values,
+              first: async () => {
+                if (sql.includes("SELECT id FROM users")) return { id: memberSession.id };
+                return adminSession;
+              }
+            };
+          }
+        };
+      },
+      async batch(statements) {
+        batches.push(statements);
+        return statements.map(() => ({ success: true }));
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "k".repeat(64),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ newPassword: "x".repeat(12) })
+  }), rotationEnv);
+  assert.equal(response.status, 200);
+  assert.equal(batches.length, 1);
+  assert.equal(batches[0].length, 2);
+  assert.ok(batches[0].some(statement => statement.sql.includes("UPDATE users SET password_hash")));
+  assert.ok(batches[0].some(statement => statement.sql.includes("DELETE FROM sessions")));
+  const data = await response.json();
+  assert.equal(data.ok, true);
+});
