@@ -8,6 +8,7 @@ on:
       - "sw.js"
       - "package.json"
       - "wrangler.example.toml"
+      - "wrangler.local.example.toml"
       - ".gitignore"
       - "backend/**"
       - "tests/**"
@@ -21,6 +22,7 @@ on:
       - "sw.js"
       - "package.json"
       - "wrangler.example.toml"
+      - "wrangler.local.example.toml"
       - ".gitignore"
       - "backend/**"
       - "tests/**"
@@ -168,16 +170,18 @@ jobs:
           wrangler_template = Path("wrangler.example.toml").read_text(encoding="utf-8")
           required_config = [
               'ALLOWED_ORIGIN = "https://REPLACE_WITH_APPROVED_STAGING_ORIGIN"',
+              'GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID"',
+              'GOOGLE_DRIVE_FOLDER_ID = "REPLACE_WITH_DEDICATED_DRIVE_FOLDER_ID"',
               'crons = ["17 3 * * *"]',
               'binding = "DB"',
-              'binding = "MEDIA"',
               'migrations_dir = "backend/migrations"',
               'REPLACE_WITH_VERIFIED_STAGING_D1_DATABASE_ID',
-              'REPLACE_WITH_APPROVED_STAGING_R2_BUCKET',
+              'GOOGLE_CLIENT_SECRET',
+              'GOOGLE_REFRESH_TOKEN',
           ]
           missing_config = [value for value in required_config if value not in wrangler_template]
           if missing_config:
-              raise SystemExit(f"Wrangler staging template is missing required safety/config entries: {missing_config}")
+              raise SystemExit(f"Wrangler staging template is missing required Google Drive/D1 entries: {missing_config}")
 
           parsed_config = tomllib.loads(wrangler_template)
           if parsed_config["vars"].get("ALLOWED_ORIGIN") != "https://REPLACE_WITH_APPROVED_STAGING_ORIGIN":
@@ -186,5 +190,14 @@ jobs:
               raise SystemExit("Wrangler staging template must declare the expected daily Cron Trigger.")
           if parsed_config["d1_databases"][0].get("migrations_dir") != "backend/migrations":
               raise SystemExit("Wrangler D1 migration directory does not match the repository.")
-          print("Wrangler TOML parses and contains required staging placeholders and scheduled-cleanup declaration.")
+          if "r2_buckets" in parsed_config:
+              raise SystemExit("The staging template must use Google Drive, not R2.")
+          local_config = tomllib.loads(Path("wrangler.local.example.toml").read_text(encoding="utf-8"))
+          if local_config["vars"].get("ALLOWED_ORIGIN") != "http://127.0.0.1:8000":
+              raise SystemExit("Local Wrangler template must use the documented local site origin.")
+          if local_config["d1_databases"][0].get("database_name") != "community-hub-local":
+              raise SystemExit("Local Wrangler template must use a separate local D1 database.")
+          if "r2_buckets" in local_config:
+              raise SystemExit("The local template must use Google Drive, not R2.")
+          print("Staging and local Wrangler TOML parse with isolated D1 and Google Drive configuration.")
           PY
