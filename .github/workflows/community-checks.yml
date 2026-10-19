@@ -109,5 +109,15 @@ jobs:
           else:
               raise SystemExit("Username uniqueness is not case-insensitive.")
 
+          try:
+              connection.execute(
+                  "INSERT INTO users(username,email,display_name,role,password_hash) VALUES(?,?,?,?,?)",
+                  ("email-duplicate", "SCHEMA-TEST@EXAMPLE.TEST", "Duplicate Email", "member", "not-a-real-hash"),
+              )
+          except sqlite3.IntegrityError:
+              pass
+          else:
+              raise SystemExit("Email uniqueness is not case-insensitive.")
+
           print(f"Schema OK: {len(expected)} expected tables and core constraints validated.")
           PY
