@@ -457,7 +457,7 @@ async function handle(request, env) {
     return json({items:(rows.results || []).map(x=>({...x, mediaUrl:"/api/media/"+encodeURIComponent(x.id)}))}, 200, env.ALLOWED_ORIGIN);
   }
   if (request.method === "POST" && path === "/api/content") {
-    const user = await auth(request, env, "member");
+    const user = await auth(request, env);
     await requireChangedPassword(user);
     const mediaStore = driveStorage(env);
     // Bound the complete multipart request before parsing it. Content-Length is
