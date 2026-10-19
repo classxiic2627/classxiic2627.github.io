@@ -145,7 +145,7 @@ Use a password manager and do not reuse a school, email, GitHub, or other accoun
 
 ## Privacy, media, and notifications
 
-- **Member uploads are published immediately; there is no pre-publication moderation queue.** The public content and media endpoints make these posts accessible to visitors. Before launch, establish a class-photo consent and removal policy, make the administrator contact path clear, and decide whether immediate public posting is appropriate for the class. Do not upload photos/videos without permission or publish sensitive personal information. If the class needs approval before publication, add and test a moderation workflow before deployment.
+- **Owner-approved publication/removal policy:** uploads publish immediately and are public; there is no pre-publication moderation queue or prior-consent requirement. Uploaders cannot delete their own posts; the designated class archive administrator can remove posts. The Community page tells users how to request removal through the usual class communication channel. This records the owner's policy decision, not a general privacy recommendation. Do not upload sensitive personal information; visitors can access published media through the site.
 - The Worker uses Google Drive for new media objects and stores the Drive file ID in D1 metadata. Drive files must remain private; public website access, if approved, is proxied through the Worker rather than granted directly to Drive files.
 - Drive and D1 do not share a transaction. Upload creation attempts compensating Drive deletion if the D1 metadata insert fails; if cleanup fails, the unreferenced object must be reconciled. Deletion removes the Drive object before deleting the D1 row so a Drive failure leaves a retryable metadata row. These paths require failure-injection tests and a real staging verification before launch.
 - Push delivery is not implemented. The push API deliberately reports that it is unavailable rather than claiming notifications were sent.
@@ -160,7 +160,7 @@ Use a password manager and do not reuse a school, email, GitHub, or other accoun
 - [ ] Verify member lifecycle routes cannot mutate admin accounts; if multi-admin account management is added later, implement and test last-enabled-admin protection.
 - [ ] Inspect the target D1 schema and review a forward-only migration; do not apply the baseline schema blindly.
 - [ ] Confirm the media storage plan and cost before provisioning anything.
-- [ ] Confirm class-photo consent and removal-request handling. Public visibility is owner-approved: the content, announcement, and media-read routes are intentionally public.
+- [x] Record the owner's publication/removal decision: no prior-consent requirement; uploads publish immediately and are public; uploaders cannot delete their own posts; only the administrator can remove posts. Public visibility is owner-approved: the content, announcement, and media-read routes are intentionally public.
 - [ ] Treat push notifications as unavailable until delivery and failure cases have real tests.
 
 
