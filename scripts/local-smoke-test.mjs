@@ -93,7 +93,8 @@ async function main() {
     method: "POST",
     body: { username, password: temporaryPassword }
   });
-  assert(memberLogin.response.status === 200 && memberLogin.data.mustChangePassword === true,
+  assert(memberLogin.response.status === 200 && memberLogin.data.mustChangePassword === true &&
+    typeof memberLogin.data.token === "string",
     "Temporary-password member login failed or did not enforce the password-change gate.");
   console.log("PASS: student login requires a password change.");
 
@@ -103,7 +104,10 @@ async function main() {
     body: { currentPassword: temporaryPassword, newPassword: permanentPassword }
   });
   assert(changed.response.status === 200, "Student password change failed (HTTP " + changed.response.status + ").");
-  console.log("PASS: student changed the temporary password.");
+  const revokedPasswordSession = await api("/api/admin/users", { token: memberLogin.data.token });
+  assert(revokedPasswordSession.response.status === 401,
+    "The old student session remained valid after the password change.");
+  console.log("PASS: student changed the temporary password and the old session was revoked.");
 
   const relogin = await api("/api/member/login", {
     method: "POST",
@@ -186,8 +190,11 @@ async function main() {
     body: { disabled: true }
   });
   assert(disabled.response.status === 200, "Could not disable the smoke-test account for cleanup.");
+  const revokedDisabledSession = await api("/api/admin/users", { token: relogin.data.token });
+  assert(revokedDisabledSession.response.status === 401,
+    "The disabled student session remained valid.");
   cleanupMemberId = null;
-  console.log("PASS: old temporary password rejected; smoke-test account disabled.");
+  console.log("PASS: old temporary password rejected; disabling the account revoked its session.");
   console.log("LOCAL ACCOUNT FLOW VERIFIED.");
 }
 
