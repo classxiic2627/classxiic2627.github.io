@@ -1658,6 +1658,7 @@ test("keeps the 50 MiB upload cap aligned across Worker, browser, UI, and docs",
   assert.match(workerSource, /const MAX_UPLOAD_REQUEST_BYTES = MAX_MEDIA_BYTES \+ 1024 \* 1024;/);
   assert.match(workerSource, /Upload request exceeds the 50 MiB media limit/);
   assert.match(clientSource, /file\.size > 50 \* 1024 \* 1024/);
+  assert.match(clientSource, /Media must be 50 MiB or smaller/);
   assert.match(htmlSource, /Maximum file size: 50 MiB/);
   assert.match(htmlSource, /Only the class archive administrator can remove a post/i);
   assert.match(htmlSource, /uploaders cannot delete their own uploads/i);
