@@ -185,27 +185,33 @@ async function issueSession(user, env) {
     .bind(await digest(token), user.id, now + ttl, now).run();
   return {token, expiresIn:ttl, user:{username:user.username, displayName:user.display_name, role:user.role}};
 }
-async function rateLimitKey(request, env, scope) {
+async function reserveAuthAttempt(request, env, scope) {
   const ip = request.headers.get("CF-Connecting-IP") || "unknown";
   const keyHash = await digest(scope + ":" + ip);
-  const cutoff = Math.floor(Date.now() / 1000) - AUTH_WINDOW_SECONDS;
-  const row = await env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM auth_attempts WHERE key_hash=? AND attempted_at>?"
-  ).bind(keyHash, cutoff).first();
-  if (Number(row?.n || 0) >= AUTH_MAX_ATTEMPTS) {
+  const now = Math.floor(Date.now() / 1000);
+  const cutoff = now - AUTH_WINDOW_SECONDS;
+  // Count and reserve in one SQLite write statement so concurrent requests
+  // cannot all pass a separate COUNT check before any failure is recorded.
+  const result = await env.DB.prepare(
+    "INSERT INTO auth_attempts(key_hash,attempted_at) " +
+    "SELECT ?,? WHERE (SELECT COUNT(*) FROM auth_attempts WHERE key_hash=? AND attempted_at>?) < ?"
+  ).bind(keyHash, now, keyHash, cutoff, AUTH_MAX_ATTEMPTS).run();
+  if (Number(result.meta?.changes || 0) !== 1) {
     fail("Too many attempts. Please try again in 15 minutes.", 429);
   }
-  return keyHash;
+  const attemptId = Number(result.meta?.last_row_id);
+  if (!Number.isSafeInteger(attemptId) || attemptId <= 0) {
+    fail("Authentication throttling is unavailable.", 503);
+  }
+  return {id:attemptId, keyHash};
 }
-async function recordFailedAttempt(env, keyHash) {
-  await env.DB.prepare("INSERT INTO auth_attempts(key_hash,attempted_at) VALUES(?,?)")
-    .bind(keyHash, Math.floor(Date.now() / 1000)).run();
-}
-async function clearFailedAttempts(env, keyHash) {
-  await env.DB.prepare("DELETE FROM auth_attempts WHERE key_hash=?").bind(keyHash).run();
+async function clearAuthReservation(env, attempt) {
+  // Delete only this successful request's reservation; never clear concurrent failures.
+  await env.DB.prepare("DELETE FROM auth_attempts WHERE id=? AND key_hash=?")
+    .bind(attempt.id, attempt.keyHash).run();
 }
 async function login(request, env, role) {
-  const attemptKey = await rateLimitKey(request, env, "login:" + role);
+  const attempt = await reserveAuthAttempt(request, env, "login:" + role);
   const body = await readJson(request);
   if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
   const username = cleanText(body.username, 64, "Username", true).toLowerCase();
@@ -220,10 +226,9 @@ async function login(request, env, role) {
   const passwordMatches = await verifyPassword(password, salt, hash);
   const okay = !!user && !user.disabled && passwordMatches;
   if (!okay) {
-    await recordFailedAttempt(env, attemptKey);
     fail("Invalid username or password.", 401);
   }
-  await clearFailedAttempts(env, attemptKey);
+  await clearAuthReservation(env, attempt);
   return json({...await issueSession(user, env), mustChangePassword:!!user.must_change_password}, 200, env.ALLOWED_ORIGIN);
 }
 async function requireChangedPassword(user) {
@@ -245,14 +250,13 @@ async function handle(request, env) {
   }
 
   if (request.method === "POST" && path === "/api/setup") {
-    const attemptKey = await rateLimitKey(request, env, "setup");
     if (!env.SETUP_SECRET) fail("Initial setup is disabled until SETUP_SECRET is configured.", 503);
+    const attempt = await reserveAuthAttempt(request, env, "setup");
     const supplied = request.headers.get("X-Setup-Secret") || "";
     if (supplied.length < 16 || supplied.length > 256 || !constantTimeEqual(await digest(supplied), await digest(env.SETUP_SECRET))) {
-      await recordFailedAttempt(env, attemptKey);
       fail("Not authorized.", 401);
     }
-    await clearFailedAttempts(env, attemptKey);
+    await clearAuthReservation(env, attempt);
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
     const adminUsername = normalizeUsername(body.adminUsername);
@@ -281,17 +285,16 @@ async function handle(request, env) {
   }
   if (request.method === "POST" && path === "/api/account/password") {
     const user = await auth(request, env);
-    const attemptKey = await rateLimitKey(request, env, "password-change:" + user.id);
+    const attempt = await reserveAuthAttempt(request, env, "password-change:" + user.id);
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
     if (typeof body.currentPassword !== "string" || body.currentPassword.length > 256 || !validPassword(body.newPassword)) fail("Current password must be valid and the new password must be at least 12 non-blank characters.");
     const row = await env.DB.prepare("SELECT password_hash FROM users WHERE id=?").bind(user.id).first();
     const [salt, hash] = row.password_hash.split("$");
     if (!(await verifyPassword(body.currentPassword, salt, hash))) {
-      await recordFailedAttempt(env, attemptKey);
       fail("Current password is incorrect.", 401);
     }
-    await clearFailedAttempts(env, attemptKey);
+    await clearAuthReservation(env, attempt);
     const h = await passwordHash(body.newPassword);
     await env.DB.batch([
       env.DB.prepare("UPDATE users SET password_hash=?,must_change_password=0,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?")
