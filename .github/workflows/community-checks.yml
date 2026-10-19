@@ -29,6 +29,12 @@ on:
 permissions:
   contents: read
 
+# Keep only the newest pending validation for a given PR/ref. This avoids
+# wasting runner capacity on stale commits while preserving main-branch checks.
+concurrency:
+  group: community-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   syntax-and-schema:
     name: JavaScript syntax and SQL schema
