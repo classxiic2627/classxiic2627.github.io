@@ -1,8 +1,8 @@
 # Deployment and D1 Migration Readiness
 
 **Status: BLOCKED — review only; not deployment approval.**  
-**Reviewed feature head:** `ca3d24bb7c9b05b4e286625a7fa0cd345db5fcc5`  
-**Exact-head Actions run:** [39292316028](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292316028) — failed in Worker tests after the health-route split; fix regressions and rerun before treating this head as verified  
+**Reviewed feature head:** `e6459efbdc8d2cbfc007788ce390ecd4648359b7`  
+**Exact-head Actions run:** [39292682824](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292682824) — failed in Worker tests; fix regressions and rerun before treating this head as verified  
 **Code PR:** [#1 — Build the Community Hub API and secure upload foundation](https://github.com/classxiic2627/classxiic2627.github.io/pull/1)  
 **Readiness PR:** [#2 — Add deployment and D1 migration readiness review](https://github.com/classxiic2627/classxiic2627.github.io/pull/2)
 
@@ -14,7 +14,7 @@ The owner narrowed the deliverable to **add a login/account system to the existi
 
 At reviewed feature head `446c68b3e335bd8384b3fdcfd3430148ad8e7763`:
 
-- The prior head `446c68b3e335bd8384b3fdcfd3430148ad8e7763` passed 71/71 automated tests and the local D1 smoke in [run 39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369). The newer health-route split at `ca3d24bb7c9b05b4e286625a7fa0cd345db5fcc5` is **not yet green**: [run 39292316028](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292316028) failed in Worker tests. Do not carry the prior pass forward as validation of the new head.
+- The prior head `446c68b3e335bd8384b3fdcfd3430148ad8e7763` passed 71/71 automated tests and the local D1 smoke in [run 39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369). The health-route split was introduced at `ca3d24bb7c9b05b4e286625a7fa0cd345db5fcc5`; the current head `e6459efbdc8d2cbfc007788ce390ecd4648359b7` adds the README contract and remains **not green**: [run 39292682824](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292682824) failed in Worker tests. Do not carry the prior pass forward as validation of the new head.
 - The Worker implements individual admin/member accounts, one-time CLI-only admin setup, password hashing, session expiry/revocation, temporary-password change, admin member management, announcements, and upload/read/delete routes.
 - `backend/google-drive.js` is the canonical Google Drive adapter. It uses server-side OAuth refresh-token credentials, keeps Drive files private, proxies file content through the Worker, stores Drive file IDs in D1 metadata, and supports health/upload/read/delete operations.
 - `tests/google-drive-adapter.test.mjs` and `tests/google-drive-delete.test.mjs` exercise the Worker routes with fake Google API responses and mock D1 objects. These are automated contract/regression tests, **not** real Google Drive or live D1 verification.
@@ -120,7 +120,7 @@ Before any approved migration:
 - Admin setup is intentionally CLI/trusted-tool only. `X-Setup-Secret` must remain out of browser CORS and frontend state. Rotate/remove `SETUP_SECRET` immediately after successful initialization.
 - Passwords are hashed with PBKDF2-SHA-256 and per-password salts; session bearer tokens are stored as hashes. Account lifecycle and forced-password-change paths have mock regression tests.
 - Layered application throttling uses a 100-attempt/15-minute IP-and-role ceiling and a 10-attempt/15-minute per-account bucket. This reduces collateral lockout behind shared school Wi-Fi but means someone who knows a username can intentionally trigger temporary account lockout. Confirm the trade-off and add monitoring/edge limits before launch.
-- **Health contract implemented, verification pending:** public `GET /api/health` is a cheap liveness response and does not query D1, refresh OAuth, or call Google Drive. Admin-authenticated `GET /api/admin/health` checks D1 + Drive readiness after authentication and the forced-password-change gate. Exact-head run [39292316028](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292316028) failed Worker tests; keep this contract unverified until the regressions are fixed and CI passes.
+- **Health contract implemented, verification pending:** public `GET /api/health` is a cheap liveness response and does not query D1, refresh OAuth, or call Google Drive. Admin-authenticated `GET /api/admin/health` checks D1 + Drive readiness after authentication and the forced-password-change gate. Exact-head runs [39292316028](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292316028) and [39292682824](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292682824) failed Worker tests; keep this contract unverified until the regressions are fixed and CI passes.
 - Request bodies are bounded by streamed byte counts, and allowed media types have basic signature checks. These checks are not full media decoding or malware scanning.
 - Push delivery is not implemented; the API deliberately reports it unavailable.
 - The service-worker navigation tests constrain notification-click navigation to the archive origin, but that does not implement push delivery or prove deployment configuration.
@@ -128,7 +128,7 @@ Before any approved migration:
 ## 5. Release checklist
 
 - [x] Prior code head `446c68b3e335bd8384b3fdcfd3430148ad8e7763` passed run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369), including 71/71 automated tests and syntax/DOM/schema checks.
-- [ ] Fix Worker-test failures and obtain a passing exact-head CI run after the health-route split; run [39292316028](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292316028) failed.
+- [ ] Fix Worker-test failures and obtain a passing exact-head CI run after the health-route split; latest run [39292682824](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292682824) failed.
 - [x] Local D1 smoke script passed in CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369); real Google Drive remains unverified.
 - [ ] Verify real Google OAuth and Drive folder access using a dedicated test account/folder.
 - [ ] Resolve public-media visibility and class-photo consent/removal policy.
