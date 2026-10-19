@@ -116,6 +116,7 @@ async function clearFailedAttempts(env, keyHash) {
 async function login(request, env, role) {
   const attemptKey = await rateLimitKey(request, env, "login:" + role);
   const body = await readJson(request);
+  if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
   const username = role === "admin" ? cleanText(body.username, 64, "Username", true) : "class-members";
   const password = body.password;
   if (typeof password !== "string" || password.length > 256) fail("Invalid username or password.", 401);
