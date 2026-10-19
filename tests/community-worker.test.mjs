@@ -670,3 +670,20 @@ test("admin rotation hashes the shared password and revokes member sessions atom
   const data = await response.json();
   assert.equal(data.ok, true);
 });
+
+test("health endpoint reports an R2 dependency failure", async () => {
+  const brokenEnv = {
+    ALLOWED_ORIGIN: origin,
+    DB: {
+      prepare() { return { first: async () => ({ ok: 1 }) }; }
+    },
+    MEDIA: {
+      head: async () => { throw new Error("simulated R2 outage"); }
+    }
+  };
+  const response = await worker.fetch(request("/api/health", {
+    headers: { Origin: origin }
+  }), brokenEnv);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "Internal server error." });
+});
