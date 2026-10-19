@@ -1,7 +1,15 @@
 /* Community Hub frontend. Set API_BASE to the deployed Worker origin before launch. */
 (() => {
   "use strict";
-  const API_BASE = (document.querySelector('meta[name="community-api-base"]')?.content || "").trim().replace(/\/+$/, "");
+  const configuredApiBase = (document.querySelector('meta[name="community-api-base"]')?.content || "").trim().replace(/\/+$/, "");
+  const localHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+  // Development-only default: the published site host never matches this list,
+  // so the public frontend stays disconnected until an approved Worker origin is configured.
+  const API_BASE = configuredApiBase || (
+    window.location.protocol === "http:" && localHosts.has(window.location.hostname)
+      ? "http://127.0.0.1:8787"
+      : ""
+  );
   const $ = (id) => document.getElementById(id);
   let memberToken = "";
   let adminToken = "";
