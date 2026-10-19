@@ -1,0 +1,12 @@
+{
+  "name": "class-xii-c-community-hub",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node --check community.js && node --check backend/worker.js",
+    "test": "node --test tests/community-worker.test.mjs"
+  }
+}
