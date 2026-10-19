@@ -15,6 +15,8 @@
 const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
 const SESSION_DEFAULT_SECONDS = 12 * 60 * 60;
 const PBKDF2_ITERATIONS = 210000;
+const AUTH_WINDOW_SECONDS = 15 * 60;
+const AUTH_MAX_ATTEMPTS = 10;
 const encoder = new TextEncoder();
 
 function json(data, status = 200, origin = null) {
@@ -92,7 +94,27 @@ async function issueSession(user, env) {
     .bind(await digest(token), user.id, now + ttl, now).run();
   return {token, expiresIn:ttl, user:{username:user.username, displayName:user.display_name, role:user.role}};
 }
+async function rateLimitKey(request, env, scope) {
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const keyHash = await digest(scope + ":" + ip);
+  const cutoff = Math.floor(Date.now() / 1000) - AUTH_WINDOW_SECONDS;
+  const row = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM auth_attempts WHERE key_hash=? AND attempted_at>?"
+  ).bind(keyHash, cutoff).first();
+  if (Number(row?.n || 0) >= AUTH_MAX_ATTEMPTS) {
+    fail("Too many attempts. Please try again in 15 minutes.", 429);
+  }
+  return keyHash;
+}
+async function recordFailedAttempt(env, keyHash) {
+  await env.DB.prepare("INSERT INTO auth_attempts(key_hash,attempted_at) VALUES(?,?)")
+    .bind(keyHash, Math.floor(Date.now() / 1000)).run();
+}
+async function clearFailedAttempts(env, keyHash) {
+  await env.DB.prepare("DELETE FROM auth_attempts WHERE key_hash=?").bind(keyHash).run();
+}
 async function login(request, env, role) {
+  const attemptKey = await rateLimitKey(request, env, "login:" + role);
   const body = await readJson(request);
   const username = role === "admin" ? cleanText(body.username, 64, "Username", true) : "class-members";
   const password = body.password;
@@ -105,7 +127,11 @@ async function login(request, env, role) {
     const [salt, hash] = user.password_hash.split("$");
     if (salt && hash) okay = await verifyPassword(password, salt, hash);
   }
-  if (!okay) fail("Invalid username or password.", 401);
+  if (!okay) {
+    await recordFailedAttempt(env, attemptKey);
+    fail("Invalid username or password.", 401);
+  }
+  await clearFailedAttempts(env, attemptKey);
   return json({...await issueSession(user, env), mustChangePassword:!!user.must_change_password}, 200, env.ALLOWED_ORIGIN);
 }
 async function requireChangedPassword(user) {
@@ -118,9 +144,14 @@ async function handle(request, env) {
   if (request.method === "GET" && path === "/api/health") return json({ok:true, service:"class-archive-api", time:new Date().toISOString()}, 200, env.ALLOWED_ORIGIN);
 
   if (request.method === "POST" && path === "/api/setup") {
+    const attemptKey = await rateLimitKey(request, env, "setup");
     if (!env.SETUP_SECRET) fail("Initial setup is disabled until SETUP_SECRET is configured.", 503);
     const supplied = request.headers.get("X-Setup-Secret") || "";
-    if (supplied.length < 16 || !(await digest(supplied) === await digest(env.SETUP_SECRET))) fail("Not authorized.", 401);
+    if (supplied.length < 16 || !(await digest(supplied) === await digest(env.SETUP_SECRET))) {
+      await recordFailedAttempt(env, attemptKey);
+      fail("Not authorized.", 401);
+    }
+    await clearFailedAttempts(env, attemptKey);
     const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first();
     if (count.n > 0) fail("Setup has already been completed. Rotate the setup secret and remove it when finished.", 409);
     const body = await readJson(request);
