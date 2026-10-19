@@ -62,6 +62,22 @@ test("preflight allows only the configured origin", async () => {
   assert.equal(denied.status, 403);
 });
 
+test("one-time setup secret is intentionally excluded from browser CORS preflight", async () => {
+  const response = await worker.fetch(request("/api/setup", {
+    method: "OPTIONS",
+    headers: {
+      Origin: origin,
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type,x-setup-secret"
+    }
+  }), env);
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get("access-control-allow-origin"), origin);
+  const allowedHeaders = response.headers.get("access-control-allow-headers");
+  assert.equal(allowedHeaders, "Authorization, Content-Type");
+  assert.doesNotMatch(allowedHeaders, /X-Setup-Secret/i);
+});
+
 test("unknown API paths return JSON 404 without caching", async () => {
   const response = await worker.fetch(request("/api/does-not-exist", {
     headers: { Origin: origin }
