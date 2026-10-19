@@ -269,10 +269,16 @@ function driveStorage(env) {
   }
 }
 async function handle(request, env) {
-  if (!env.DB) fail("Database storage is not configured.", 503);
   const url = new URL(request.url);
   const path = url.pathname;
+  // Public liveness must stay cheap: no D1 query, OAuth refresh, or provider API call.
   if (request.method === "GET" && path === "/api/health") {
+    return json({ok:true, service:"class-archive-api"}, 200, env.ALLOWED_ORIGIN);
+  }
+  if (!env.DB) fail("Database storage is not configured.", 503);
+  if (request.method === "GET" && path === "/api/admin/health") {
+    const admin = await auth(request, env, "admin");
+    await requireChangedPassword(admin);
     try {
       await env.DB.prepare("SELECT 1 AS ok").first();
       await driveStorage(env).health();
