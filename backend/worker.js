@@ -385,8 +385,11 @@ async function handle(request, env) {
     const itemId = decodeURIComponent(path.slice("/api/admin/content/".length));
     const row = await env.DB.prepare("SELECT media_key FROM content WHERE id=?").bind(itemId).first();
     if (!row) fail("Content not found.", 404);
-    await env.DB.prepare("DELETE FROM content WHERE id=?").bind(itemId).run();
+    // R2 and D1 cannot share a transaction. Delete the object first so an R2
+    // failure leaves the metadata row available for an admin retry. If the D1
+    // delete fails afterward, retrying the idempotent R2 delete can finish cleanup.
     await env.MEDIA.delete(row.media_key);
+    await env.DB.prepare("DELETE FROM content WHERE id=?").bind(itemId).run();
     return json({ok:true}, 200, env.ALLOWED_ORIGIN);
   }
   if (request.method === "POST" && path === "/api/admin/announcements") {
