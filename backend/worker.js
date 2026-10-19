@@ -428,7 +428,14 @@ async function handle(request, env) {
     try {
       await env.DB.prepare("INSERT INTO content(id,user_id,type,title,caption,media_key,media_mime,media_size) VALUES(?,?,?,?,?,?,?,?)")
         .bind(itemId, user.id, type, title, caption, key, mime, file.size).run();
-    } catch (error) { await env.MEDIA.delete(key); throw error; }
+    } catch (error) {
+      try { await env.MEDIA.delete(key); }
+      catch (cleanupError) {
+        // Preserve the D1 failure while recording the object key for later reconciliation.
+        console.error("Failed to clean up unreferenced media object", {key, error:String(cleanupError)});
+      }
+      throw error;
+    }
     return json({ok:true, id:itemId}, 201, env.ALLOWED_ORIGIN);
   }
   if (request.method === "GET" && path.startsWith("/api/media/")) {
