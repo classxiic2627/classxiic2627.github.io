@@ -115,6 +115,42 @@ async function main() {
   });
   assert(oldPassword.response.status === 401, "The old temporary password was not rejected.");
 
+  if (process.env.LOCAL_VERIFY_DRIVE === "1") {
+    const form = new FormData();
+    form.set("type", "image");
+    form.set("title", "Temporary local Drive smoke test");
+    form.set("caption", "This item should be deleted by the smoke test.");
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jNioAAAAASUVORK5CYII=", "base64");
+    form.set("media", new Blob([png], { type: "image/png" }), "local-smoke-test.png");
+    const uploadResponse = await fetch(new URL("/api/content", base), {
+      method: "POST",
+      headers: { Authorization: "Bearer " + relogin.data.token },
+      body: form
+    });
+    const upload = await uploadResponse.json().catch(() => ({}));
+    assert(uploadResponse.status === 201 && typeof upload.id === "string",
+      "Real Google Drive upload failed (HTTP " + uploadResponse.status + "): " + (upload.error || "unknown error"));
+    console.log("PASS: real Google Drive upload.");
+
+    const listed = await api("/api/content");
+    assert(listed.response.status === 200 && listed.data.items?.some(item => item.id === upload.id),
+      "Uploaded Drive item was not returned by the content listing.");
+    const mediaResponse = await fetch(new URL("/api/media/" + encodeURIComponent(upload.id), base));
+    const mediaBytes = new Uint8Array(await mediaResponse.arrayBuffer());
+    assert(mediaResponse.status === 200 && mediaResponse.headers.get("content-type") === "image/png" &&
+      mediaBytes.length === png.length && mediaBytes.every((byte, index) => byte === png[index]),
+      "Real Google Drive read-back did not match the uploaded PNG.");
+    console.log("PASS: real Google Drive read-back matches uploaded bytes.");
+
+    const deletedMedia = await api("/api/admin/content/" + encodeURIComponent(upload.id), {
+      method: "DELETE", token: adminToken
+    });
+    assert(deletedMedia.response.status === 200, "Could not delete the Drive smoke-test item (HTTP " + deletedMedia.response.status + ").");
+    console.log("PASS: real Google Drive deletion.");
+  } else {
+    console.log("INFO: skipped real Drive test; set LOCAL_VERIFY_DRIVE=1 to opt in.");
+  }
+
   const disabled = await api("/api/admin/users/" + memberId + "/status", {
     method: "POST",
     token: adminToken,
@@ -122,7 +158,7 @@ async function main() {
   });
   assert(disabled.response.status === 200, "Could not disable the smoke-test account for cleanup.");
   console.log("PASS: old temporary password rejected; smoke-test account disabled.");
-  console.log("LOCAL D1 ACCOUNT FLOW VERIFIED. This script does not verify real Google Drive upload/read/delete.");
+  console.log("LOCAL ACCOUNT FLOW VERIFIED.");
 }
 
 main().catch(error => {
