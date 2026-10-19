@@ -36,8 +36,8 @@
     <section class="community-panel" aria-labelledby="announcementsTitle"><h2 id="announcementsTitle">Class announcements</h2><div id="announcementList" class="announcement-list"><p>Loading announcements…</p></div></section>
     <section class="community-panel" id="share" aria-labelledby="shareTitle">
       <h2 id="shareTitle">Share a memory</h2>
-      <p>Sign in with the class upload password to contribute a photo or video. Uploaded posts are publicly visible on this website.</p>
-      <form id="memberLogin" class="community-form"><label>Class upload password<input id="memberPassword" type="password" autocomplete="current-password" required maxlength="256"></label><button class="button button-primary" type="submit">Unlock upload form</button></form>
+      <p>Sign in with the individual account provided by your class administrator to contribute a photo or video. Uploaded posts are publicly visible on this website.</p>
+      <form id="memberLogin" class="community-form"><label>Username<input id="memberUsername" type="text" autocomplete="username" maxlength="64" required></label><label>Password<input id="memberPassword" type="password" autocomplete="current-password" required maxlength="256"></label><button class="button button-primary" type="submit">Sign in</button></form>
       <p id="memberStatus" class="community-status" role="status" aria-live="polite"></p>
       <div id="memberSessionActions" class="community-actions" hidden><button class="button button-ghost" id="memberLogout" type="button">Sign out</button></div>
       <form id="uploadForm" class="community-form" hidden>
