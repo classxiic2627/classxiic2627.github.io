@@ -116,6 +116,86 @@ const adminSession = {
   display_name: "Archive Admin"
 };
 
+test("admin can create an individual member account with normalized unique identity and temporary password", async () => {
+  const calls = [];
+  const accountEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql, values,
+              first: async () => adminSession,
+              run: async () => {
+                calls.push({sql, values});
+                return {success:true,meta:{last_row_id:42,changes:1}};
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/users", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer " + "u".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({
+      username:"  Alice.Student ",email:" ALICE@Example.Test ",displayName:"Alice Student",
+      temporaryPassword:"a-unique-temporary-password"
+    })
+  }), accountEnv);
+  assert.equal(response.status,201);
+  assert.equal((await response.json()).id,42);
+  const insert = calls.find(call=>call.sql.includes("INSERT INTO users"));
+  assert.ok(insert);
+  assert.equal(insert.values[0],"alice.student");
+  assert.equal(insert.values[1],"alice@example.test");
+  assert.equal(insert.values[2],"Alice Student");
+  assert.match(insert.values[3],/^.+\$.+$/);
+  assert.notEqual(insert.values[3],"a-unique-temporary-password");
+  assert.match(insert.sql,/must_change_password,disabled/);
+});
+
+test("member accounts cannot access the admin account-management API", async () => {
+  const response = await worker.fetch(request("/api/admin/users", {
+    headers:{Origin:origin,Authorization:"Bearer " + "v".repeat(64)}
+  }), authenticatedEnv(memberSession));
+  assert.equal(response.status,403);
+  assert.deepEqual(await response.json(),{error:"You do not have permission to do that."});
+});
+
+test("disabling a member and revoking their sessions use one atomic D1 batch", async () => {
+  let batchStatements = [];
+  const accountEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {sql,values,first:async()=>adminSession,run:async()=>({success:true,meta:{changes:1}})};
+          }
+        };
+      },
+      async batch(statements) {
+        batchStatements = statements;
+        return [{success:true,meta:{changes:1}},{success:true,meta:{changes:1}}];
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/users/42/status", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer " + "w".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({disabled:true})
+  }),accountEnv);
+  assert.equal(response.status,200);
+  assert.equal(batchStatements.length,2);
+  assert.match(batchStatements[0].sql,/UPDATE users SET disabled/);
+  assert.match(batchStatements[1].sql,/DELETE FROM sessions WHERE user_id/);
+});
+
 test("protected upload route rejects missing authentication", async () => {
   const response = await worker.fetch(request("/api/content", {
     method: "POST",
