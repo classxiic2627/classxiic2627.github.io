@@ -1659,7 +1659,7 @@ test("keeps the 50 MiB upload cap aligned across Worker, browser, UI, and docs",
   assert.match(workerSource, /Upload request exceeds the 50 MB media limit/);
   assert.match(clientSource, /file\.size > 50 \* 1024 \* 1024/);
   assert.match(htmlSource, /Maximum file size: 50 MB/);
-  assert.match(readmeSource, /51 MiB \(50 MiB media/);
+  assert.ok(readmeSource.includes("51 MiB (50 MiB media"));
 });
 
 test("rejects multipart uploads over the 50 MB limit from declared length before parsing", async () => {
