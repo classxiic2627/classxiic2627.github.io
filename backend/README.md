@@ -64,7 +64,7 @@ After the Worker and its storage are configured in an approved environment, use 
 }
 ```
 
-Use a password manager and do not reuse a school, email, GitHub, or other account password. The Worker uses one conditional `INSERT ... SELECT ... WHERE NOT EXISTS (SELECT 1 FROM users)` statement for initialization, and CI tests assert this single-statement guard and the refusal path. Verify behavior against an approved D1 staging database before relying on it in production. After successful initialization, rotate or remove `SETUP_SECRET`.
+Use a password manager and do not reuse a school, email, GitHub, or other account password. The Worker first checks whether any user already exists and, if so, returns `409` before parsing the request or performing PBKDF2 password hashing. For the first setup, it still uses one conditional `INSERT ... SELECT ... WHERE NOT EXISTS (SELECT 1 FROM users)` statement as the final race guard if two initialization requests overlap. Setup-attempt reservations remain on invalid/failed attempts and are cleared only after the conditional insert succeeds. CI tests cover repeat attempts after initialization and successful reservation cleanup; verify the flow against an approved D1 staging database before relying on it in production. After successful initialization, rotate or remove `SETUP_SECRET`.
 
 ## Privacy, media, and notifications
 
