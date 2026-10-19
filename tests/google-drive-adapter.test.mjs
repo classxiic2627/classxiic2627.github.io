@@ -310,3 +310,41 @@ test("rejects an untrusted resumable session URL before forwarding the OAuth tok
   assert.equal(calls.some(call=>call.target.startsWith("https://attacker.example/")), false);
   assert.equal(calls.filter(call=>call.target.startsWith("https://www.googleapis.com/upload/")).length, 1);
 });
+
+
+test("rejects an unexpected same-origin upload-session path before forwarding the OAuth token", async () => {
+  const calls = [];
+  const env = {
+    ...envFor({
+      first: async sql => sql.includes("FROM sessions s JOIN users") ? {
+        id: 7, username: "student", display_name: "Student", role: "member",
+        disabled: 0, must_change_password: 0, expires_at: Math.floor(Date.now() / 1000) + 3600
+      } : null
+    }),
+    __googleFetch: async (input, options = {}) => {
+      const target = String(input);
+      calls.push({target, authorization:options.headers?.Authorization || ""});
+      if (target === "https://oauth2.googleapis.com/token") return oauthResponse();
+      if (target.startsWith("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable")) {
+        return new Response(null, {
+          status: 200,
+          headers: {Location:"https://www.googleapis.com/upload/drive/v3/files-evil?upload_id=bad"}
+        });
+      }
+      throw new Error("Unexpected outbound request: " + target);
+    }
+  };
+  const form = new FormData();
+  form.set("type", "image");
+  form.set("title", "Session URL validation");
+  form.set("caption", "");
+  form.set("media", new File([Uint8Array.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])], "tiny.png", {type:"image/png"}));
+  const response = await worker.fetch(request("/api/content", {
+    method:"POST",
+    headers:{Authorization:"Bearer test-session-token",Origin:origin},
+    body:form
+  }), env);
+  assert.equal(response.status, 503);
+  assert.equal(calls.some(call=>call.target.includes("/files-evil")), false);
+  assert.equal(calls.filter(call=>call.target.startsWith("https://www.googleapis.com/upload/")).length, 1);
+});
