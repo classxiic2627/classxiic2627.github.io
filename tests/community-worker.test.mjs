@@ -24,7 +24,7 @@ function request(path, { method = "GET", headers = {} } = {}) {
   });
 }
 
-test("service-worker notification clicks cannot navigate the archive off-origin", async () => {
+test("service-worker notification clicks reject off-origin and malformed URLs", async () => {
   const handlers = new Map();
   const navigated = [];
   const focused = [];
@@ -43,16 +43,18 @@ test("service-worker notification clicks cannot navigate the archive off-origin"
     openWindow: async url => { navigated.push(url); }
   };
   runInNewContext(readFileSync(new URL("../sw.js", import.meta.url), "utf8"), { self, clients, URL });
-  let completion;
-  let closed = false;
-  handlers.get("notificationclick")({
-    notification: { data: { url: "https://attacker.example/phishing" }, close() { closed = true; } },
-    waitUntil(promise) { completion = promise; }
-  });
-  await completion;
-  assert.equal(closed, true);
-  assert.deepEqual(navigated, [archiveOrigin + "/"]);
-  assert.deepEqual(focused, [true]);
+  let closedCount = 0;
+  for (const url of ["https://attacker.example/phishing", "http://[invalid"]) {
+    let completion;
+    handlers.get("notificationclick")({
+      notification: { data: { url }, close() { closedCount++; } },
+      waitUntil(promise) { completion = promise; }
+    });
+    await completion;
+  }
+  assert.equal(closedCount, 2);
+  assert.deepEqual(navigated, [archiveOrigin + "/", archiveOrigin + "/"]);
+  assert.deepEqual(focused, [true, true]);
 });
 
 test("health endpoint returns a non-cacheable success response", async () => {
