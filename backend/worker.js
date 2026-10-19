@@ -3,9 +3,9 @@
  *
  * Required bindings/configuration:
  *   DB: Cloudflare D1 database
- *   GOOGLE_SERVICE_ACCOUNT_EMAIL: dedicated Google service account email
- *   GOOGLE_PRIVATE_KEY: service-account private key (Worker secret)
- *   GOOGLE_DRIVE_FOLDER_ID: dedicated Drive folder shared with the service account
+ *   GOOGLE_CLIENT_ID: dedicated Google Google account email
+ *   GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN: service-account private key (Worker secret)
+ *   GOOGLE_DRIVE_FOLDER_ID: dedicated Drive folder shared with the Google account
  * Required secrets/vars:
  *   SETUP_SECRET (secret; long random value, used once to initialize accounts)
  *   ALLOWED_ORIGIN (exact site origin)
@@ -166,61 +166,35 @@ const GOOGLE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3/files";
 const GOOGLE_TOKEN_API = "https://oauth2.googleapis.com/token";
 const GOOGLE_DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
 
-function base64Url(value) {
-  const bytes = typeof value === "string" ? encoder.encode(value) : value;
-  return toB64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-function privateKeyBytes(value) {
-  const pem = String(value || "").replace(/\\n/g, "\n");
-  const body = pem.replace(/-----BEGIN PRIVATE KEY-----/g, "")
-    .replace(/-----END PRIVATE KEY-----/g, "").replace(/\s/g, "");
-  if (!body) fail("Google Drive private key is not configured.", 503);
-  try { return fromB64(body); }
-  catch { fail("Google Drive private key is invalid.", 503); }
-}
 async function googleDriveAccessToken(env, fetchImpl = fetch) {
-  const email = cleanText(env.GOOGLE_SERVICE_ACCOUNT_EMAIL, 254, "Google service account email", true);
-  const privateKey = env.GOOGLE_PRIVATE_KEY;
-  if (typeof privateKey !== "string" || !privateKey.trim()) fail("Google Drive credentials are not configured.", 503);
-  const keyId = email + ":" + await digest(privateKey);
+  const clientId = cleanText(env.GOOGLE_CLIENT_ID, 512, "Google OAuth client ID", true);
+  const clientSecret = env.GOOGLE_CLIENT_SECRET;
+  const refreshToken = env.GOOGLE_REFRESH_TOKEN;
+  if (typeof clientSecret !== "string" || !clientSecret.trim() ||
+      typeof refreshToken !== "string" || !refreshToken.trim()) {
+    fail("Google Drive OAuth credentials are not configured.", 503);
+  }
+  const keyId = await digest(clientId + ":" + clientSecret + ":" + refreshToken);
   const now = Math.floor(Date.now() / 1000);
   if (googleDriveTokenCache.key === keyId && googleDriveTokenCache.token && googleDriveTokenCache.expiresAt > now + 60) {
     return googleDriveTokenCache.token;
   }
-  let signingKey;
-  try {
-    signingKey = await crypto.subtle.importKey(
-      "pkcs8", privateKeyBytes(privateKey),
-      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]
-    );
-  } catch {
-    fail("Google Drive private key could not be loaded.", 503);
-  }
-  const header = base64Url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const claims = base64Url(JSON.stringify({
-    iss: email,
-    scope: "https://www.googleapis.com/auth/drive",
-    aud: GOOGLE_TOKEN_API,
-    iat: now,
-    exp: now + 3600
-  }));
-  const signingInput = header + "." + claims;
-  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", signingKey, encoder.encode(signingInput));
-  const assertion = signingInput + "." + base64Url(new Uint8Array(signature));
   let response;
   try {
     response = await fetchImpl(GOOGLE_TOKEN_API, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-        assertion
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: "refresh_token"
       })
     });
   } catch {
     fail("Google OAuth token request failed.", 503);
   }
-  if (!response.ok) fail("Google OAuth rejected the service-account credentials (" + response.status + ").", 503);
+  if (!response.ok) fail("Google OAuth rejected the refresh credentials (" + response.status + ").", 503);
   const data = await response.json().catch(() => null);
   if (!data || typeof data.access_token !== "string" || !data.access_token || !Number.isFinite(Number(data.expires_in))) {
     fail("Google OAuth returned an invalid token response.", 503);
@@ -260,7 +234,7 @@ async function checkGoogleDriveFolder(env, fetchImpl = fetch) {
     {}, fetchImpl);
   const folder = await response.json().catch(() => null);
   if (!folder || folder.id !== folderId || folder.mimeType !== GOOGLE_DRIVE_FOLDER_MIME) {
-    fail("Configured Google Drive storage target is not a folder accessible to the service account.", 503);
+    fail("Configured Google Drive storage target is not a folder accessible to the Google account.", 503);
   }
   return folder;
 }
@@ -579,7 +553,7 @@ async function handle(request, env) {
     const user = await auth(request, env, "member");
     await requireChangedPassword(user);
     requireDriveFolder(env);
-    if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_PRIVATE_KEY) fail("Google Drive credentials are not configured; uploads are unavailable.", 503);
+    if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) fail("Google Drive OAuth credentials are not configured; uploads are unavailable.", 503);
     // Bound the complete multipart request before parsing it. Content-Length is
     // only an early-rejection hint; the streamed byte count is authoritative.
     const uploadBody = await readLimitedBody(request, MAX_UPLOAD_REQUEST_BYTES, "Upload request exceeds the 15 MB media limit.");
@@ -638,7 +612,7 @@ async function handle(request, env) {
   if (request.method === "DELETE" && path.startsWith("/api/admin/content/")) {
     const user = await auth(request, env, "admin"); await requireChangedPassword(user);
     requireDriveFolder(env);
-    if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_PRIVATE_KEY) fail("Google Drive credentials are not configured; deletion is unavailable.", 503);
+    if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) fail("Google Drive OAuth credentials are not configured; deletion is unavailable.", 503);
     const itemId = decodeURIComponent(path.slice("/api/admin/content/".length));
     const row = await env.DB.prepare("SELECT media_key FROM content WHERE id=?").bind(itemId).first();
     if (!row) fail("Content not found.", 404);
