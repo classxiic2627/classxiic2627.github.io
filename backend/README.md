@@ -35,21 +35,23 @@ The dependency-free `package.json` defines the same checks used by CI. GitHub Ac
 The Worker currently expects:
 
 - `DB`: a Cloudflare D1 binding for account, session, announcement, and content metadata operations.
-- `MEDIA`: a Cloudflare R2 bucket binding for uploads, serving media, deleting media, and a fully healthy storage check. Account management and announcements can run without this binding, but media operations fail closed with `503`; the health endpoint also reports `503` until media storage is configured.
+- `GOOGLE_CLIENT_ID`: OAuth client ID used for the server-side Google OAuth refresh-token flow.
+- `GOOGLE_CLIENT_SECRET` and `GOOGLE_REFRESH_TOKEN`: Worker secrets. They must never be placed in browser code, `wrangler.toml`, or Git. The OAuth grant must include the Google Drive scope needed for the dedicated folder.
+- `GOOGLE_DRIVE_FOLDER_ID`: ID of the dedicated folder the authorized Google account can access. Keep the folder private; the Worker proxies media through its API.
 - `SETUP_SECRET`: a long random Worker secret, used only for one-time setup.
 - `ALLOWED_ORIGIN`: the exact HTTPS origin of the deployed static site, with no trailing slash.
 - Optional `SESSION_TTL_SECONDS`: session lifetime, bounded by the Worker.
 
-**Resource and migration caution:** Do not create paid resources or change a live database without explicit approval and a verified cost/schema review. Confirm current Cloudflare pricing and account limits before choosing R2. Do not apply `schema.sql` to an existing D1 as if it were a forward migration. Export/inspect the live schema first and prepare a reviewed, forward-only migration.
+**Resource and migration caution:** Do not create paid resources or change a live database without explicit approval and a verified cost/schema review. Google Drive integration still requires an owner-authorized OAuth client, refresh token, and dedicated folder; do not create credentials or grant access without approval. Do not apply `schema.sql` to an existing D1 as if it were a forward migration. Export/inspect the live schema first and prepare a reviewed, forward-only migration.
 
 ### Wrangler template and D1 migrations
 
-- `wrangler.example.toml` is a placeholder-only staging template. Copy it to `wrangler.toml` locally, replace the D1 database ID and R2 bucket name only after those staging resources are approved and verified, and keep the local file uncommitted. `.gitignore` excludes `wrangler.toml`, `.dev.vars`, and local Wrangler state.
+- `wrangler.example.toml` is a placeholder-only staging template. Copy it to `wrangler.toml` locally and replace placeholders only with verified, approved values. Keep the filled file uncommitted. `.gitignore` excludes `wrangler.toml`, `.dev.vars`, and local Wrangler state. Store `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, and `SETUP_SECRET` as Worker secrets, never as TOML vars.
 - The template declares a daily Cron Trigger for the Worker's `scheduled()` cleanup handler. This is configuration intent, not proof that a deployed trigger exists or fires; verify it in staging.
 - `backend/migrations/0001_initial.sql` is the versioned **initial schema for a new, empty database**. CI checks it against `backend/schema.sql`. It is not a safe migration for an existing D1 database. Inspect the actual schema and migration history and prepare a separate, reviewed forward migration if data or tables already exist.
 - No database ID, bucket, secret, deployed Worker URL, or production environment is supplied by this template. Do not deploy or run migrations until the resource identity, schema, cost, and recovery plan are verified and the repository owner explicitly approves.
 
-The health endpoint checks both D1 and R2 and returns `503` if either is unavailable. Without R2, database-backed account and announcement routes can still be exercised, but media features remain unavailable. A successful local mock test is not evidence that deployed bindings, secrets, migrations, or origin settings are correct. The frontend's `API_BASE` in `community.js` is intentionally empty right now, so the site is not connected to a deployed Worker. Set it only after an approved deployment and staging test; do not invent a Worker URL.
+The health endpoint checks D1 and verifies access to the configured Google Drive folder; it returns `503` if either check fails. Mocked Google API tests do not prove that a real OAuth refresh token or folder permission works. The frontend reads the Worker URL from the `community-api-base` meta element in `community.html`; it is intentionally blank until a Worker origin has been approved and verified. Do not invent or commit a live Worker URL.
 
 ## One-time administrator setup
 
@@ -69,8 +71,8 @@ Use a password manager and do not reuse a school, email, GitHub, or other accoun
 ## Privacy, media, and notifications
 
 - **Member uploads are published immediately; there is no pre-publication moderation queue.** The public content and media endpoints make these posts accessible to visitors. Before launch, establish a class-photo consent and removal policy, make the administrator contact path clear, and decide whether immediate public posting is appropriate for the class. Do not upload photos/videos without permission or publish sensitive personal information. If the class needs approval before publication, add and test a moderation workflow before deployment.
-- `MEDIA` is a required R2 binding in the current Worker; do not assume Google Drive or another storage provider is integrated.
-- Admin deletion removes the R2 object before deleting the D1 content row so an R2 failure leaves a retryable admin record. D1 and R2 are not transactional together: if R2 succeeds but the D1 delete fails, retry cleanup and monitor/reconcile that residual state. Upload creation also spans two stores: if the D1 metadata insert fails after an R2 put, the Worker attempts compensating R2 deletion. If that cleanup fails too, it logs the unreferenced object key and cleanup error for later reconciliation; the two stores still are not atomic.
+- The Worker uses Google Drive for new media objects and stores the Drive file ID in D1 metadata. Drive files must remain private; public website access, if approved, is proxied through the Worker rather than granted directly to Drive files.
+- Drive and D1 do not share a transaction. Upload creation attempts compensating Drive deletion if the D1 metadata insert fails; if cleanup fails, the unreferenced object must be reconciled. Deletion removes the Drive object before deleting the D1 row so a Drive failure leaves a retryable metadata row. These paths require failure-injection tests and a real staging verification before launch.
 - Push delivery is not implemented. The push API deliberately reports that it is unavailable rather than claiming notifications were sent.
 - Keep HTTPS enabled for the site and API. Use edge-level rate limiting as defense-in-depth and test a staging deployment before public launch.
 
