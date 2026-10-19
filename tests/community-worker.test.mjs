@@ -1199,6 +1199,25 @@ test("admin readiness reports a dependency failure when D1 is unreachable", asyn
   assert.deepEqual(await response.json(),{error:"Internal server error."});
 });
 
+test("admin readiness maps a D1 session-lookup outage to service unavailable", async () => {
+  const brokenEnv = {
+    ...env,
+    DB: {
+      prepare() {
+        return {
+          bind() { return { first: async () => { throw new Error("simulated D1 session lookup outage"); } }; },
+          first: async () => ({ok:1})
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/health", {
+    headers: {Origin:origin,Authorization:"Bearer " + "a".repeat(64)}
+  }), brokenEnv);
+  assert.equal(response.status,503);
+  assert.deepEqual(await response.json(),{error:"Internal server error."});
+});
+
 test("throttles password-change verification attempts per authenticated account", async () => {
   const protectedEnv = {
     ...env,
