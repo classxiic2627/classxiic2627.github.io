@@ -56,7 +56,7 @@ After the Worker and its storage are configured in an approved environment, send
 }
 ```
 
-Use a password manager and do not reuse a school, email, GitHub, or other account password. The setup endpoint is intended to refuse initialization once an account exists. Confirm that the current implementation has a concurrency-safe one-time initialization guard before relying on it in production. After successful initialization, rotate or remove `SETUP_SECRET`.
+Use a password manager and do not reuse a school, email, GitHub, or other account password. The Worker uses one conditional `INSERT ... SELECT ... WHERE NOT EXISTS (SELECT 1 FROM users)` statement for initialization, and CI tests assert this single-statement guard and the refusal path. Verify behavior against an approved D1 staging database before relying on it in production. After successful initialization, rotate or remove `SETUP_SECRET`.
 
 ## Privacy, media, and notifications
 
@@ -71,7 +71,7 @@ Use a password manager and do not reuse a school, email, GitHub, or other accoun
 - [ ] Test member login with username and password from the frontend.
 - [ ] Test account creation, duplicate normalized username/email rejection, temporary-password gating, password change, disable/re-enable, reset, and session revocation.
 - [ ] Verify atomic state/session changes and protect one-time administrator initialization against concurrent requests.
-- [ ] Verify last-enabled-admin protection and role checks.
+- [ ] Verify member lifecycle routes cannot mutate admin accounts; if multi-admin account management is added later, implement and test last-enabled-admin protection.
 - [ ] Inspect the target D1 schema and review a forward-only migration; do not apply the baseline schema blindly.
 - [ ] Confirm the media storage plan and cost before provisioning anything.
 - [ ] Confirm consent, public visibility, and removal-request handling.
