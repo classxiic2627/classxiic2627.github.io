@@ -15,6 +15,7 @@ function makeGoogleFetch(overrides = {}) {
       return Response.json({access_token:"test-drive-access-token",expires_in:3600});
     }
     if (url.pathname === "/drive/v3/files/" + driveFolderId && method === "GET") {
+      if (overrides.onFolder) return overrides.onFolder({url,init});
       return Response.json({id:driveFolderId,name:"Test uploads",mimeType:"application/vnd.google-apps.folder"});
     }
     if (url.pathname === "/upload/drive/v3/files" && method === "POST") {
@@ -474,7 +475,7 @@ test("disabling a member and revoking their sessions use one atomic D1 batch", a
   assert.match(batchStatements[1].sql,/DELETE FROM sessions WHERE user_id/);
 });
 
-test("account management remains available without R2 media storage", async () => {
+test("account management remains available without Google Drive configuration", async () => {
   const accountEnv = {
     ALLOWED_ORIGIN: origin,
     DB: {
@@ -497,8 +498,8 @@ test("account management remains available without R2 media storage", async () =
   assert.deepEqual(await health.json(), { error: "Internal server error." });
 });
 
-test("upload fails closed with 503 when R2 is not configured", async () => {
-  const mediaMissingEnv = { ...authenticatedEnv(memberSession), MEDIA: undefined };
+test("upload fails closed with 503 when Google Drive OAuth is not configured", async () => {
+  const mediaMissingEnv = { ...authenticatedEnv(memberSession), GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined, GOOGLE_REFRESH_TOKEN: undefined };
   const response = await worker.fetch(request("/api/content", {
     method: "POST",
     headers: { Origin: origin, Authorization: "Bearer " + "u".repeat(64) }
@@ -545,10 +546,15 @@ test("member disable route cannot delete sessions for an administrator ID", asyn
   assert.deepEqual(statements[1].values,[8,8]);
 });
 
-test("successful admin deletion removes R2 media before D1 metadata", async () => {
+test("successful admin deletion removes Google Drive media before D1 metadata", async () => {
   const order = [];
   const deleteEnv = {
     ...env,
+    __googleFetch: makeGoogleFetch({onDelete:({url})=>{
+      assert.equal(url.pathname,"/drive/v3/files/drive-file-delete-in-order");
+      order.push("drive-delete");
+      return new Response(null,{status:204});
+    }}),
     DB: {
       prepare(sql) {
         return {
@@ -558,7 +564,7 @@ test("successful admin deletion removes R2 media before D1 metadata", async () =
               sql,values,
               first:async()=>{
                 if (sql.includes("FROM sessions s JOIN users")) return adminSession;
-                if (sql.includes("SELECT media_key FROM content")) return {media_key:"uploads/delete-in-order"};
+                if (sql.includes("SELECT media_key FROM content")) return {media_key:"drive-file-delete-in-order"};
                 return null;
               },
               run:async()=>{order.push("d1-delete");return {success:true,meta:{changes:1}};}
@@ -566,10 +572,6 @@ test("successful admin deletion removes R2 media before D1 metadata", async () =
           }
         };
       }
-    },
-    MEDIA: {
-      ...env.MEDIA,
-      delete:async key=>{assert.equal(key,"uploads/delete-in-order");order.push("r2-delete");}
     }
   };
   const response = await worker.fetch(new Request("https://api.example.test/api/admin/content/delete-in-order", {
@@ -577,13 +579,17 @@ test("successful admin deletion removes R2 media before D1 metadata", async () =
     headers:{Origin:origin,Authorization:"Bearer " + "e".repeat(64)}
   }),deleteEnv);
   assert.equal(response.status,200);
-  assert.deepEqual(order,["r2-delete","d1-delete"]);
+  assert.deepEqual(order,["drive-delete","d1-delete"]);
 });
 
-test("R2 delete failure preserves the D1 content row so an admin can retry", async () => {
+test("Google Drive delete failure preserves the D1 content row so an admin can retry", async () => {
   const executed = [];
   const deleteEnv = {
     ...env,
+    __googleFetch: makeGoogleFetch({onDelete:({url})=>{
+      executed.push({mediaDelete:url.pathname.split("/").pop()});
+      return new Response("simulated Drive failure",{status:500});
+    }}),
     DB: {
       prepare(sql) {
         return {
@@ -593,7 +599,7 @@ test("R2 delete failure preserves the D1 content row so an admin can retry", asy
               sql,values,
               first:async()=>{
                 if (sql.includes("FROM sessions s JOIN users")) return adminSession;
-                if (sql.includes("SELECT media_key FROM content")) return {media_key:"uploads/retryable-item"};
+                if (sql.includes("SELECT media_key FROM content")) return {media_key:"drive-file-retryable-item"};
                 return null;
               },
               run:async()=>{executed.push({sql,values});return {success:true,meta:{changes:1}};}
@@ -601,18 +607,14 @@ test("R2 delete failure preserves the D1 content row so an admin can retry", asy
           }
         };
       }
-    },
-    MEDIA: {
-      ...env.MEDIA,
-      delete:async key=>{executed.push({mediaDelete:key});throw new Error("simulated R2 failure");}
     }
   };
   const response = await worker.fetch(new Request("https://api.example.test/api/admin/content/retryable-item", {
     method:"DELETE",
     headers:{Origin:origin,Authorization:"Bearer " + "c".repeat(64)}
   }),deleteEnv);
-  assert.equal(response.status,500);
-  assert.ok(executed.some(item=>item.mediaDelete==="uploads/retryable-item"));
+  assert.equal(response.status,503);
+  assert.ok(executed.some(item=>item.mediaDelete==="drive-file-retryable-item"));
   assert.equal(executed.some(item=>item.sql?.includes("DELETE FROM content WHERE id=?")),false);
 });
 
@@ -1074,13 +1076,11 @@ test("valid setup-secret retries after initialization remain throttled without r
   assert.equal(userInsertAttempts, 0, "completed setup should short-circuit before PBKDF2 and insert");
 });
 
-test("rejects disallowed upload MIME types before writing to media storage", async () => {
-  let mediaWrites = 0;
+test("rejects disallowed upload MIME types before contacting Google Drive", async () => {
+  let driveCalls = 0;
   const uploadEnv = {
     ...authenticatedEnv(memberSession),
-    MEDIA: {
-      async put() { mediaWrites++; }
-    }
+    __googleFetch: makeGoogleFetch({fetch:()=>{driveCalls++;return new Response("unexpected",{status:500});}})
   };
   const form = new FormData();
   form.set("type", "image");
@@ -1099,7 +1099,7 @@ test("rejects disallowed upload MIME types before writing to media storage", asy
   assert.deepEqual(await response.json(), {
     error: "File type does not match an allowed image/video type."
   });
-  assert.equal(mediaWrites, 0);
+  assert.equal(driveCalls, 0);
 });
 
 test("rejects null setup payloads without creating accounts", async () => {
@@ -1396,15 +1396,11 @@ test("legacy shared-password rotation endpoint is removed", async () => {
   assert.equal(response.status, 404);
 });
 
-test("health endpoint reports an R2 dependency failure", async () => {
+test("health endpoint reports a Google Drive dependency failure", async () => {
   const brokenEnv = {
-    ALLOWED_ORIGIN: origin,
-    DB: {
-      prepare() { return { first: async () => ({ ok: 1 }) }; }
-    },
-    MEDIA: {
-      head: async () => { throw new Error("simulated R2 outage"); }
-    }
+    ...env,
+    __googleFetch: makeGoogleFetch({onFolder:()=>new Response("simulated Drive outage",{status:500})}),
+    DB: { prepare() { return { first: async () => ({ ok: 1 }) }; } }
   };
   const response = await worker.fetch(request("/api/health", {
     headers: { Origin: origin }
@@ -1630,13 +1626,10 @@ test("rejects uploads whose bytes do not match their declared image/video MIME t
     "image/jpeg", "image/png", "image/webp", "image/gif",
     "video/mp4", "video/webm", "video/ogg"
   ];
-  let puts = 0;
+  let driveCalls = 0;
   const mediaEnv = {
     ...authenticatedEnv(memberSession),
-    MEDIA: {
-      put: async () => { puts++; },
-      delete: async () => {}
-    }
+    __googleFetch: makeGoogleFetch({fetch:()=>{driveCalls++;return new Response("unexpected",{status:500});}})
   };
   for (const mime of mediaTypes) {
     const form = new FormData();
@@ -1657,7 +1650,7 @@ test("rejects uploads whose bytes do not match their declared image/video MIME t
       error: "File contents do not match the selected media type."
     });
   }
-  assert.equal(puts, 0);
+  assert.equal(driveCalls, 0);
 });
 
 test("accepts a PNG upload with a matching file signature", async () => {
@@ -1670,16 +1663,14 @@ test("accepts a PNG upload with a matching file signature", async () => {
   form.set("title", "Valid PNG signature");
   form.set("caption", "");
   form.set("media", new Blob([pngBytes], { type: "image/png" }), "pixel.png");
-  let storedKey = null;
+  let storedDriveId = null;
   const mediaEnv = {
     ...authenticatedEnv(memberSession),
-    MEDIA: {
-      put: async (key, _body, options) => {
-        storedKey = key;
-        assert.equal(options.httpMetadata.contentType, "image/png");
-      },
-      delete: async () => {}
-    }
+    __googleFetch: makeGoogleFetch({uploadId:"drive-file-png",onUpload:({metadata,id})=>{
+      storedDriveId = id;
+      assert.equal(metadata.mimeType,"image/png");
+      assert.deepEqual(metadata.parents,[driveFolderId]);
+    }})
   };
   const response = await worker.fetch(new Request("https://api.example.test/api/content", {
     method: "POST",
@@ -1690,11 +1681,11 @@ test("accepts a PNG upload with a matching file signature", async () => {
     body: form
   }), mediaEnv);
   assert.equal(response.status, 201);
-  assert.match(storedKey, /^uploads\//);
+  assert.equal(storedDriveId, "drive-file-png");
   assert.ok((await response.json()).id);
 });
 
-test("removes an uploaded R2 object when D1 metadata insertion fails", async () => {
+test("removes an uploaded Google Drive file when D1 metadata insertion fails", async () => {
   const pngBytes = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4J8AAAAASUVORK5CYII=",
     "base64"
@@ -1704,10 +1695,15 @@ test("removes an uploaded R2 object when D1 metadata insertion fails", async () 
   form.set("title", "Compensation test");
   form.set("caption", "");
   form.set("media", new Blob([pngBytes], { type: "image/png" }), "pixel.png");
-  let storedKey = null;
-  const deletedKeys = [];
+  let storedDriveId = null;
+  const deletedIds = [];
   const uploadEnv = {
     ...env,
+    __googleFetch: makeGoogleFetch({
+      uploadId:"drive-file-cleanup",
+      onUpload:({id})=>{storedDriveId=id;},
+      onDelete:({url})=>{deletedIds.push(url.pathname.split("/").pop());return new Response(null,{status:204});}
+    }),
     DB: {
       prepare(sql) {
         return {
@@ -1725,10 +1721,6 @@ test("removes an uploaded R2 object when D1 metadata insertion fails", async () 
           }
         };
       }
-    },
-    MEDIA: {
-      put: async key => { storedKey = key; },
-      delete: async key => { deletedKeys.push(key); }
     }
   };
   const response = await worker.fetch(new Request("https://api.example.test/api/content", {
@@ -1741,8 +1733,8 @@ test("removes an uploaded R2 object when D1 metadata insertion fails", async () 
   }), uploadEnv);
   assert.equal(response.status, 500);
   assert.deepEqual(await response.json(), { error: "Internal server error." });
-  assert.ok(storedKey);
-  assert.deepEqual(deletedKeys, [storedKey]);
+  assert.equal(storedDriveId, "drive-file-cleanup");
+  assert.deepEqual(deletedIds, ["drive-file-cleanup"]);
 });
 
 test("successful member login creates a hashed, expiring session", async () => {
