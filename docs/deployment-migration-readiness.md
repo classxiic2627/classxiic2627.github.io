@@ -69,17 +69,21 @@ npm run smoke:local
 
 The smoke script prints each successful step. It verifies first-admin setup (or checks the existing demo admin on a repeat run), admin login, student creation, temporary-password login, forced password change, successful re-login, rejection of the old temporary password, and disabling the generated test student.
 
-**Terminal 3 — serve the existing website UI**:
+**Terminal 3 — serve only public website files (never serve the repository root)**:
 
 ```powershell
-python -m http.server 8000 --bind 127.0.0.1
+$demoSite = Join-Path $env:TEMP "class-xii-c-community-static"
+New-Item -ItemType Directory -Force $demoSite | Out-Null
+Copy-Item community.html,community.js,styles.css,index.html,gallery.html,script.js,sw.js -Destination $demoSite
+foreach ($dir in @("images","gallery","games","vimages")) {
+  if (Test-Path $dir) { Copy-Item $dir -Destination $demoSite -Recurse -Force }
+}
+python -m http.server 8000 --bind 127.0.0.1 --directory $demoSite
 ```
 
-Open [http://127.0.0.1:8000/community.html](http://127.0.0.1:8000/community.html). Sign in to the admin desk with the disposable demo-admin credentials above. Create a separate demo student from the admin desk, then test the student login and required temporary-password change. You can also publish an announcement and confirm it appears in the public list; both use the local D1 database. Stop the local Worker and static server with Ctrl+C when finished.
+Open [http://127.0.0.1:8000/community.html](http://127.0.0.1:8000/community.html). Sign in to the admin desk with the disposable demo-admin credentials above. Create a separate demo student from the admin desk, then test the student login and required temporary-password change. You can also publish an announcement and confirm it appears in the public list; both use the local D1 database. Stop the local Worker and static server with Ctrl+C when finished. The temporary static directory contains only the selected public site files; it does not contain `.dev.vars`, local credentials, backend code, or repository configuration.
 
-**One-command launcher:** the feature branch now includes `npm run demo:local`, which starts the local Worker/site and generates disposable admin credentials. The launcher has not been executed end-to-end on a Windows workstation as part of this review. Exact-head CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369) includes a Windows runner that parses the PowerShell script for syntax errors, while the separate Linux job verifies the Worker/account flow against local D1; neither step claims the launcher itself was executed end-to-end.
-
-**Local static-server security review pending:** both the launcher and the manual Terminal 3 command currently run Python's static server with the repository root as its document root. That makes local-only files such as `.dev.vars` and `.local-demo-credentials.txt` retrievable over loopback while the demo is running. Before using either server on a machine with local secrets, restrict static serving to public website assets or deny dotfiles/config/secrets. The server is bound to loopback, not the LAN, but this should still be hardened before recommending the launcher broadly.
+**One-command launcher:** the feature branch includes `npm run demo:local`. It creates/reuses ignored disposable admin credentials, migrates only Wrangler's local D1, starts the Worker, copies only `community.html`, `community.js`, and `styles.css` into a unique temporary directory, and serves that directory on loopback. It does not serve repository-root secrets/config. The launcher has not been executed end-to-end on a Windows workstation as part of this review. Exact-head CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369) parses the PowerShell script on a Windows runner; the separate main job verifies the Worker/account flow against local D1. These checks do not claim the launcher itself was executed end-to-end.
 
 **Known local-demo limits:** the real Google Drive upload/read/delete check is opt-in and will fail closed without owner-configured Google OAuth credentials and a dedicated test folder. Do not treat a successful account-flow smoke test as proof of Drive access or Cloudflare staging. The published site remains disconnected until a verified, approved Worker URL is configured.
 
