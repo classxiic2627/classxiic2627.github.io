@@ -12,7 +12,7 @@ This document is an evidence checklist. It does not authorize merging, deploymen
 
 The owner narrowed the deliverable to **add a login/account system to the existing site and use Google Drive for new uploaded media**, without rebuilding the existing website or changing unrelated features.
 
-At reviewed feature head `446c68b3e335bd8384b3fdcfd3430148ad8e7763`:
+At latest reviewed feature head `16fe44b78f3eb9f593a839c0940049d95c34e094`:
 
 - Earlier heads exposed regressions while separating liveness from dependency readiness; the latest fix aligns the OAuth rejection regression test with authenticated `GET /api/admin/health`. Current exact-head run [39292922092](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292922092) passed **72/72 tests** and all configured CI checks, including the isolated local D1 account-flow smoke. This is the first passing validation of the health-route split at reviewed head `16fe44b78f3eb9f593a839c0940049d95c34e094`; it does not verify real Google Drive or deployed staging.
 - The Worker implements individual admin/member accounts, one-time CLI-only admin setup, password hashing, session expiry/revocation, temporary-password change, admin member management, announcements, and upload/read/delete routes.
