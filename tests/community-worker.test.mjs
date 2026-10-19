@@ -795,6 +795,68 @@ test("different member accounts behind one shared IP are not locked out by a sma
   assert.equal(reservations.filter(item => item.keyHash === reservations[0]?.keyHash).length, 20);
 });
 
+test("per-account login throttling also applies across different source IPs", async () => {
+  const reservations = [];
+  let nextId = 0;
+  let userLookups = 0;
+  const loginEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first: async () => {
+                if (sql.includes("FROM users")) {
+                  userLookups++;
+                  return null;
+                }
+                return null;
+              },
+              run: async () => {
+                if (sql.includes("INSERT INTO auth_attempts")) {
+                  const keyHash = values[2];
+                  const cutoff = values[3];
+                  const limit = values[4];
+                  const active = reservations.filter(item => item.keyHash === keyHash && item.attemptedAt > cutoff).length;
+                  if (active >= limit) return { success: true, meta: { changes: 0 } };
+                  const item = { id: ++nextId, keyHash: values[0], attemptedAt: values[1] };
+                  reservations.push(item);
+                  return { success: true, meta: { changes: 1, last_row_id: item.id } };
+                }
+                if (sql.includes("DELETE FROM auth_attempts")) {
+                  const [attemptId, keyHash] = values;
+                  const index = reservations.findIndex(item => item.id === attemptId && item.keyHash === keyHash);
+                  if (index >= 0) reservations.splice(index, 1);
+                  return { success: true, meta: { changes: index >= 0 ? 1 : 0 } };
+                }
+                return { success: true, meta: { changes: 1, last_row_id: ++nextId } };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const responses = await Promise.all(Array.from({ length: 20 }, (_, index) => worker.fetch(
+    new Request("https://api.example.test/api/member/login", {
+      method: "POST",
+      headers: {
+        Origin: origin,
+        "CF-Connecting-IP": "198.51.100." + (index + 1),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ username: "same.student", password: "wrong-password" })
+    }),
+    loginEnv
+  )));
+  const statuses = responses.map(response => response.status);
+  assert.equal(statuses.filter(status => status === 401).length, 10);
+  assert.equal(statuses.filter(status => status === 429).length, 10);
+  assert.equal(userLookups, 10);
+  assert.equal(reservations.length, 20);
+});
+
 test("scheduled cleanup prunes old auth attempts and expired sessions", async () => {
   const statements = [];
   const promises = [];
