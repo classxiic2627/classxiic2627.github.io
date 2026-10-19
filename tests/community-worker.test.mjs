@@ -106,6 +106,14 @@ const memberSession = {
   expires_at: 4_000_000_000
 };
 
+const adminSession = {
+  ...memberSession,
+  id: 8,
+  username: "archive-admin",
+  role: "admin",
+  display_name: "Archive Admin"
+};
+
 test("protected upload route rejects missing authentication", async () => {
   const response = await worker.fetch(request("/api/content", {
     method: "POST",
@@ -394,7 +402,7 @@ test("throttles password-change verification attempts per authenticated account"
           bind() {
             return {
               first: async () => {
-                if (sql.includes("FROM sessions")) return memberSession;
+                if (sql.includes("FROM sessions")) return adminSession;
                 if (sql.includes("FROM auth_attempts")) return { n: 10 };
                 return null;
               }
@@ -429,7 +437,7 @@ test("rejects null password-change payloads as client errors", async () => {
           bind() {
             return {
               first: async () => {
-                if (sql.includes("FROM sessions")) return memberSession;
+                if (sql.includes("FROM sessions")) return adminSession;
                 if (sql.includes("FROM auth_attempts")) return { n: 0 };
                 return null;
               }
@@ -495,7 +503,7 @@ test("records failed current-password checks for throttling", async () => {
           bind(...values) {
             return {
               first: async () => {
-                if (sql.includes("FROM sessions")) return memberSession;
+                if (sql.includes("FROM sessions")) return adminSession;
                 if (sql.includes("FROM auth_attempts")) return { n: 0 };
                 if (sql.includes("SELECT password_hash FROM users")) {
                   return {
@@ -602,13 +610,6 @@ test("shared class members cannot use the admin password-rotation route", async 
 });
 
 test("admin member-password rotation enforces minimum password length", async () => {
-  const adminSession = {
-    ...memberSession,
-    id: 8,
-    username: "archive-admin",
-    role: "admin",
-    display_name: "Archive Admin"
-  };
   const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
     method: "POST",
     headers: {
