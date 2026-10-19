@@ -96,6 +96,7 @@ Adapt these to the actual schema; do not run modifying SQL during inventory.
 - [ ] **Resolve the setup CORS contract before any browser-based setup flow:** current `corsHeaders()` allows `Authorization, Content-Type`, but `POST /api/setup` reads `X-Setup-Secret`. Browser preflight requesting that custom header will fail. Either allowlist `X-Setup-Secret` and add a preflight regression test, or explicitly keep setup CLI-only and verify the documented setup procedure without exposing the secret to frontend code. This finding was posted on PR #1 after the latest CI run and is not yet shown as fixed.
 - [ ] Decide how scheduled cleanup is configured and verify expired sessions and old authentication-attempt records are cleaned up.
 - [ ] Verify deployment permissions, review requirements, monitoring, and a clear owner for incidents and account administration.
+- [ ] **Close the concurrent-auth-throttling gap:** the current Worker reads the failed-attempt count before password verification and records failure afterward in a separate operation. Concurrent bursts can all pass the count check before failures are recorded. Add an atomic reservation/counter design or verify an edge rate-limit control (preferably both), and test the promised concurrent-request behavior before public launch. This finding is posted on PR #1.
 - [ ] Confirm current Cloudflare pricing/limits and avoid creating paid resources without explicit approval.
 
 ## 6. Staging acceptance tests
