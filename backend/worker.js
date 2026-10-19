@@ -502,7 +502,7 @@ async function handle(request, env) {
     try { object = await driveStorage(env).get(row.media_key); }
     catch { fail("Google Drive media retrieval failed.", 503); }
     if (!object) fail("Media not found.", 404);
-    const contentType = object.httpMetadata?.["content-type"] || row.media_mime || "application/octet-stream";
+    const contentType = row.media_mime || object.httpMetadata?.["content-type"] || "application/octet-stream";
     const headers = new Headers({"Content-Type":contentType,"X-Content-Type-Options":"nosniff","Cache-Control":"private, max-age=60",...(row.media_size ? {"Content-Length":String(row.media_size)} : {})});
     if (env.ALLOWED_ORIGIN) for (const [key, value] of Object.entries(corsHeaders(env.ALLOWED_ORIGIN))) headers.set(key, value);
     return new Response(object.body,{headers});
