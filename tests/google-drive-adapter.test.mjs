@@ -211,7 +211,7 @@ test("media retrieval proxies Drive bytes and does not expose the Drive API URL"
 
 test("OAuth rejection fails closed without returning credentials or token details", async () => {
   const env = envFor({
-    first: async sql => sql.includes("SELECT 1 AS ok") ? { ok: 1 } : null
+    first: async sql => sql.includes("FROM sessions s JOIN users") ? adminSession : sql.includes("SELECT 1 AS ok") ? { ok: 1 } : null
   });
   const response = await withFetch(async url => {
     if (String(url) === "https://oauth2.googleapis.com/token") {
@@ -220,7 +220,7 @@ test("OAuth rejection fails closed without returning credentials or token detail
       });
     }
     throw new Error("Drive API must not be called after OAuth failure");
-  }, () => worker.fetch(request("/api/health"), env));
+  }, () => worker.fetch(request("/api/admin/health", {headers:{Authorization:"Bearer " + "a".repeat(64)}}), env));
 
   assert.equal(response.status, 503);
   const body = await response.text();
