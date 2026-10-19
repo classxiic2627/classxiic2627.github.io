@@ -1,5 +1,10 @@
-# Local Cloudflare configuration and secrets
+# Local Worker configuration: never commit real database IDs or bucket names.
 wrangler.toml
 .dev.vars
-.wrangler/
+.env
+.env.*
+!.env.example
+
+# Local tooling artifacts
 node_modules/
+.wrangler/
