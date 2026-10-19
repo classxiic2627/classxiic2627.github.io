@@ -165,7 +165,7 @@ async function handle(request, env) {
     const attemptKey = await rateLimitKey(request, env, "setup");
     if (!env.SETUP_SECRET) fail("Initial setup is disabled until SETUP_SECRET is configured.", 503);
     const supplied = request.headers.get("X-Setup-Secret") || "";
-    if (supplied.length < 16 || !constantTimeEqual(await digest(supplied), await digest(env.SETUP_SECRET))) {
+    if (supplied.length < 16 || supplied.length > 256 || !constantTimeEqual(await digest(supplied), await digest(env.SETUP_SECRET))) {
       await recordFailedAttempt(env, attemptKey);
       fail("Not authorized.", 401);
     }
