@@ -103,10 +103,10 @@ test("service-worker notification clicks reject off-origin and malformed URLs", 
   assert.deepEqual(focused, ["archive", "archive"]);
 });
 
-test("Google OAuth refresh credentials stay server-side and are used only for token exchange", async () => {
+test("admin readiness uses server-side Google OAuth credentials without exposing them", async () => {
   let tokenForm = null;
   const oauthEnv = {
-    ...env,
+    ...authenticatedEnv(adminSession),
     GOOGLE_CLIENT_ID: "unique-oauth-client-for-token-test",
     GOOGLE_CLIENT_SECRET: "unique-client-secret-test",
     GOOGLE_REFRESH_TOKEN: "unique-refresh-token-test",
@@ -115,7 +115,9 @@ test("Google OAuth refresh credentials stay server-side and are used only for to
       return Response.json({access_token:"private-test-access-token",expires_in:3600});
     }})
   };
-  const response = await worker.fetch(request("/api/health", {headers:{Origin:origin}}),oauthEnv);
+  const response = await worker.fetch(request("/api/admin/health", {headers:{
+    Origin:origin, Authorization:"Bearer " + "a".repeat(64)
+  }}),oauthEnv);
   assert.equal(response.status,200);
   assert.equal(tokenForm.get("grant_type"),"refresh_token");
   assert.equal(tokenForm.get("client_id"),oauthEnv.GOOGLE_CLIENT_ID);
@@ -124,19 +126,29 @@ test("Google OAuth refresh credentials stay server-side and are used only for to
   const body = JSON.stringify(await response.json());
   assert.doesNotMatch(body,/unique-client-secret-test|unique-refresh-token-test|private-test-access-token/);
 });
-test("health endpoint returns a non-cacheable success response", async () => {
+test("public liveness is non-cacheable and does not touch D1 or Google Drive", async () => {
+  let providerCalls = 0;
   const response = await worker.fetch(request("/api/health", {
     headers: { Origin: origin }
-  }), env);
+  }), {
+    ALLOWED_ORIGIN: origin,
+    __googleFetch: async () => { providerCalls++; throw new Error("public liveness must not call providers"); },
+    DB: { prepare() { throw new Error("public liveness must not query D1"); } }
+  });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.equal(response.headers.get("referrer-policy"), "no-referrer");
   assert.equal(response.headers.get("access-control-allow-origin"), origin);
-  assert.deepEqual(await response.json().then(({ ok, service }) => ({ ok, service })), {
-    ok: true,
-    service: "class-archive-api"
-  });
+  assert.deepEqual(await response.json(), {ok:true,service:"class-archive-api"});
+  assert.equal(providerCalls, 0);
+});
+
+test("member sessions cannot access detailed admin readiness", async () => {
+  const response = await worker.fetch(request("/api/admin/health", {
+    headers: {Origin:origin,Authorization:"Bearer " + "m".repeat(64)}
+  }), authenticatedEnv(memberSession));
+  assert.equal(response.status,403);
 });
 
 test("rejects requests from an unapproved browser origin", async () => {
@@ -190,12 +202,10 @@ test("unknown API paths return JSON 404 without caching", async () => {
   assert.deepEqual(await response.json(), { error: "Not found." });
 });
 
-test("reports unavailable storage instead of claiming the API is healthy", async () => {
-  const response = await worker.fetch(request("/api/health"), {
-    ALLOWED_ORIGIN: origin
-  });
-  assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { error: "Internal server error." });
+test("public liveness remains available when dependency bindings are absent", async () => {
+  const response = await worker.fetch(request("/api/health"), {ALLOWED_ORIGIN:origin});
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{ok:true,service:"class-archive-api"});
 });
 
 function authenticatedEnv(user) {
@@ -1169,20 +1179,16 @@ test("rejects null setup payloads without creating accounts", async () => {
   assert.equal(statements.some(({ sql }) => sql.includes("INSERT INTO users")), false);
 });
 
-test("health endpoint reports a dependency failure when D1 is unreachable", async () => {
+test("admin readiness reports a dependency failure when D1 is unreachable", async () => {
   const brokenEnv = {
-    ALLOWED_ORIGIN: origin,
-    DB: {
-      prepare() {
-        return { first: async () => { throw new Error("simulated D1 outage"); } };
-      }
-    },
+    ...authenticatedEnv(adminSession),
+    DB: { prepare() { return { first: async () => { throw new Error("simulated D1 outage"); } }; } }
   };
-  const response = await worker.fetch(request("/api/health", {
-    headers: { Origin: origin }
+  const response = await worker.fetch(request("/api/admin/health", {
+    headers: {Origin:origin,Authorization:"Bearer " + "a".repeat(64)}
   }), brokenEnv);
-  assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { error: "Internal server error." });
+  assert.equal(response.status,503);
+  assert.deepEqual(await response.json(),{error:"Internal server error."});
 });
 
 test("throttles password-change verification attempts per authenticated account", async () => {
@@ -1417,17 +1423,16 @@ test("legacy shared-password rotation endpoint is removed", async () => {
   assert.equal(response.status, 404);
 });
 
-test("health endpoint reports a Google Drive dependency failure", async () => {
+test("admin readiness reports a Google Drive dependency failure", async () => {
   const brokenEnv = {
-    ...env,
-    __googleFetch: makeGoogleFetch({onFolder:()=>new Response("simulated Drive outage",{status:500})}),
-    DB: { prepare() { return { first: async () => ({ ok: 1 }) }; } }
+    ...authenticatedEnv(adminSession),
+    __googleFetch: makeGoogleFetch({onFolder:()=>new Response("simulated Drive outage",{status:500})})
   };
-  const response = await worker.fetch(request("/api/health", {
-    headers: { Origin: origin }
+  const response = await worker.fetch(request("/api/admin/health", {
+    headers: {Origin:origin,Authorization:"Bearer " + "a".repeat(64)}
   }), brokenEnv);
-  assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { error: "Internal server error." });
+  assert.equal(response.status,503);
+  assert.deepEqual(await response.json(),{error:"Internal server error."});
 });
 
 test("rejects oversized setup secrets and records the failed attempt", async () => {
