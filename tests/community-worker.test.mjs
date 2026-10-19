@@ -419,3 +419,36 @@ test("throttles password-change verification attempts per authenticated account"
     error: "Too many attempts. Please try again in 15 minutes."
   });
 });
+
+test("rejects null password-change payloads as client errors", async () => {
+  const protectedEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          bind() {
+            return {
+              first: async () => {
+                if (sql.includes("FROM sessions")) return memberSession;
+                if (sql.includes("FROM auth_attempts")) return { n: 0 };
+                return null;
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/account/password", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.49",
+      Authorization: "Bearer " + "e".repeat(64),
+      "Content-Type": "application/json"
+    },
+    body: "null"
+  }), protectedEnv);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Invalid request body." });
+});
