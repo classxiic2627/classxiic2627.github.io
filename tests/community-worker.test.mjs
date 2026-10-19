@@ -241,7 +241,7 @@ test("records failed credential checks for login throttling", async () => {
       "CF-Connecting-IP": "203.0.113.43",
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ password: "definitely-not-the-password" })
+    body: JSON.stringify({ username: "class-members", password: "definitely-not-the-password" })
   }), loginEnv);
   assert.equal(response.status, 401);
   assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO auth_attempts")));
@@ -865,7 +865,7 @@ test("successful member login creates a hashed, expiring session", async () => {
       "CF-Connecting-IP": "203.0.113.54",
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ password: "class-archive-test-passphrase" })
+    body: JSON.stringify({ username: "class-members", password: "class-archive-test-passphrase" })
   }), loginEnv);
   assert.equal(response.status, 200);
   const data = await response.json();
