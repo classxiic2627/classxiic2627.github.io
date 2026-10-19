@@ -4,10 +4,10 @@ This is the API for the static site. It is intentionally separate from the publi
 
 ## What is implemented
 
-- D1 schema for admin/member accounts, expiring sessions, gallery metadata, announcements and push subscription records.
+- D1 schema for admin/member accounts, expiring sessions, gallery metadata, announcements, push subscription records and hashed authentication-attempt keys.
 - Worker routes for one-time setup, separate member/admin login, logout, password change, content listing/upload/deletion, announcements, media delivery and a health check.
 - PBKDF2-SHA-256 password hashing (210,000 iterations, per-password salt); random bearer tokens are stored only as SHA-256 hashes.
-- R2 media storage; 15 MB upload limit and allowlisted MIME types; parameterized SQL; origin allowlisting; no-cache auth responses.
+- R2 media storage; 15 MB upload limit and allowlisted MIME types; parameterized SQL; origin allowlisting; no-cache auth responses; IP-keyed throttling for failed login/setup attempts (10 failures per 15-minute window).
 - Push key discovery endpoint only. Push delivery is intentionally not represented as working until VAPID signing and real delivery tests are implemented.
 
 ## Cloudflare setup
@@ -65,4 +65,4 @@ Use a password manager. Do not reuse your email, school, or GitHub password. Thi
 - The current frontend's `/api/push/subscribe` flow is not ready for production. Push delivery is not implemented and the API deliberately returns 501 instead of pretending notifications work.
 - This starter uses one shared class-member password for simplicity. If the class needs per-student access, implement individual account provisioning and reset/revocation workflows before launch.
 - Do not upload photos or videos of classmates without appropriate consent. Provide a clear removal contact/process and do not publish sensitive personal information.
-- Add Cloudflare rate limiting (especially for login and setup), then run a security review and smoke tests on a staging Worker before sharing the portal. The Worker currently does not implement application-level rate limiting. The static site and API must both use HTTPS.
+- Keep Cloudflare edge rate limiting enabled as defense-in-depth, especially for login and setup, then run a security review and smoke tests on a staging Worker before sharing the portal. The Worker throttles failed login/setup attempts by IP, but distributed attempts and other abuse still require edge-level protection. The static site and API must both use HTTPS.
