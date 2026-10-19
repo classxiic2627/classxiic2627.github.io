@@ -1,8 +1,8 @@
 # Deployment and D1 Migration Readiness
 
 **Status: BLOCKED — review only; not deployment approval.**  
-**Reviewed feature head:** `3df14ba979ffdec272017509554331bd2f2811ba`  
-**Exact-head Actions run:** [39293404441](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39293404441) — passed: 73/73 Worker tests, JavaScript syntax, isolated local D1 account-flow smoke, DOM-reference checks, SQLite schema/migration parity, Wrangler template validation, and Windows PowerShell syntax parsing. This verifies automated CI/local D1 only, not real Drive or staging.  
+**Reviewed feature head:** `7d22e4ad561fd44950baa4a618807ce120fe1a94`  
+**Exact-head Actions run:** [39295576381](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39295576381) — passed: 73/73 Worker tests, JavaScript syntax, isolated local D1 account-flow smoke, DOM-reference checks, SQLite schema/migration parity, Wrangler template validation, and Windows PowerShell syntax parsing. This verifies automated CI/local D1 only, not real Drive or staging.  
 **Code PR:** [#1 — Build the Community Hub API and secure upload foundation](https://github.com/classxiic2627/classxiic2627.github.io/pull/1)  
 **Readiness PR:** [#2 — Add deployment and D1 migration readiness review](https://github.com/classxiic2627/classxiic2627.github.io/pull/2)
 
@@ -12,9 +12,9 @@ This document is an evidence checklist. It does not authorize merging, deploymen
 
 The owner narrowed the deliverable to **add a login/account system to the existing site and use Google Drive for new uploaded media**, without rebuilding the existing website or changing unrelated features.
 
-At latest reviewed feature head `3df14ba979ffdec272017509554331bd2f2811ba`:
+At latest reviewed feature head `7d22e4ad561fd44950baa4a618807ce120fe1a94`:
 
-- Earlier heads exposed regressions while separating liveness from dependency readiness; the latest fix aligns the OAuth rejection regression test with authenticated `GET /api/admin/health`. Current exact-head run [39293404441](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39293404441) passed **73/73 tests** and all configured CI checks, including the isolated local D1 account-flow smoke. This confirms the health-route split at reviewed head `3df14ba979ffdec272017509554331bd2f2811ba`; it does not verify real Google Drive or deployed staging.
+- Earlier heads exposed regressions while separating liveness from dependency readiness; the latest fix aligns the OAuth rejection regression test with authenticated `GET /api/admin/health`. Current exact-head run [39295576381](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39295576381) passed **73/73 tests** and all configured CI checks, including the isolated local D1 account-flow smoke. This confirms the health-route split at reviewed head `7d22e4ad561fd44950baa4a618807ce120fe1a94`; it does not verify real Google Drive or deployed staging.
 - The Worker implements individual admin/member accounts, one-time CLI-only admin setup, password hashing, session expiry/revocation, temporary-password change, admin member management, announcements, and upload/read/delete routes.
 - `backend/google-drive.js` is the canonical Google Drive adapter. It uses server-side OAuth refresh-token credentials, keeps Drive files private, proxies file content through the Worker, stores Drive file IDs in D1 metadata, and supports health/upload/read/delete operations.
 - `tests/google-drive-adapter.test.mjs` and `tests/google-drive-delete.test.mjs` exercise the Worker routes with fake Google API responses and mock D1 objects. These are automated contract/regression tests, **not** real Google Drive or live D1 verification.
@@ -131,7 +131,7 @@ Before any approved migration:
 - Admin setup is intentionally CLI/trusted-tool only. `X-Setup-Secret` must remain out of browser CORS and frontend state. Rotate/remove `SETUP_SECRET` immediately after successful initialization.
 - Passwords are hashed with PBKDF2-SHA-256 and per-password salts; session bearer tokens are stored as hashes. Account lifecycle and forced-password-change paths have mock regression tests.
 - Layered application throttling uses a 100-attempt/15-minute IP-and-role ceiling and a 10-attempt/15-minute per-account bucket. This reduces collateral lockout behind shared school Wi-Fi but means someone who knows a username can intentionally trigger temporary account lockout. Confirm the trade-off and add monitoring/edge limits before launch.
-- **Health contract implemented and covered by passing CI:** public `GET /api/health` is a cheap liveness response and does not query D1, refresh OAuth, or call Google Drive. Admin-authenticated `GET /api/admin/health` checks D1 + Drive readiness after authentication and the forced-password-change gate; unexpected D1 errors during session lookup map to service-unavailable responses while intentional authentication failures retain their 401/403 status. Exact-head run [39293404441](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39293404441) passed 73/73 Worker tests and the configured local checks. Real Google OAuth/Drive and deployed staging remain unverified.
+- **Health contract implemented and covered by passing CI:** public `GET /api/health` is a cheap liveness response and does not query D1, refresh OAuth, or call Google Drive. Admin-authenticated `GET /api/admin/health` checks D1 + Drive readiness after authentication and the forced-password-change gate; unexpected D1 errors during session lookup map to service-unavailable responses while intentional authentication failures retain their 401/403 status. Exact-head run [39295576381](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39295576381) passed 73/73 Worker tests and the configured local checks. Real Google OAuth/Drive and deployed staging remain unverified.
 - Request bodies are bounded by streamed byte counts, and allowed media types have basic signature checks. These checks are not full media decoding or malware scanning.
 - Push delivery is not implemented; the API deliberately reports it unavailable.
 - The service-worker navigation tests constrain notification-click navigation to the archive origin, but that does not implement push delivery or prove deployment configuration.
@@ -139,7 +139,7 @@ Before any approved migration:
 ## 5. Release checklist
 
 - [x] Prior code head `446c68b3e335bd8384b3fdcfd3430148ad8e7763` passed run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369), including 71/71 automated tests and syntax/DOM/schema checks.
-- [x] Health-route split regressions fixed and verified on exact head `3df14ba979ffdec272017509554331bd2f2811ba`; run [39293404441](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39293404441) passed 73/73 tests and all configured CI checks.
+- [x] Health-route split regressions fixed and verified on exact head `7d22e4ad561fd44950baa4a618807ce120fe1a94`; run [39295576381](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39295576381) passed 73/73 tests and all configured CI checks.
 - [x] Local D1 smoke script passed in CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369); real Google Drive remains unverified.
 - [ ] Verify real Google OAuth and Drive folder access using a dedicated test account/folder.
 - [ ] Resolve public-media visibility and class-photo consent/removal policy.
