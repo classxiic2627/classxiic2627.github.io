@@ -194,7 +194,7 @@ test("media retrieval proxies Drive bytes and does not expose the Drive API URL"
     urls.push(target);
     if (target === "https://oauth2.googleapis.com/token") return oauthResponse();
     assert.equal(target, "https://www.googleapis.com/drive/v3/files/drive-file-read1?alt=media");
-    return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 });
+    return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200, headers: { "Content-Type": "image/png" } });
   }, () => worker.fetch(request("/api/media/public-item"), env));
 
   assert.equal(response.status, 200);
