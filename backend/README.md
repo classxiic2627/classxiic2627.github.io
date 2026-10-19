@@ -105,7 +105,7 @@ $env:LOCAL_ADMIN_PASSWORD = Read-Host "Local admin password"
 npm run smoke:local
 ```
 
-The script refuses non-local URLs, exercises setup/admin login/member creation/temporary-password change/relogin/old-password rejection, and disables its generated test account. It may be rerun after setup has already completed. It verifies the real local D1 path only if Wrangler is running against the local config; it does **not** verify real Google Drive access.
+The script refuses non-local URLs, exercises setup/admin login/member creation/temporary-password change/relogin/old-password rejection, and disables its generated test account. It may be rerun after setup has already completed. To also verify a **real** Drive upload, byte-for-byte read-back, and deletion, configure valid OAuth credentials and a dedicated test folder in the local Worker, then set `$env:LOCAL_VERIFY_DRIVE = "1"` before running `npm run smoke:local`. The opt-in test uploads one tiny PNG and deletes it afterward. Without that flag, the script tests account flow only. Never point it at a remote API or a folder containing real class media.
 
 Use `npm run check` and `npm test` for fast unit/regression checks. The current CI suite uses a fake Google API and fake D1 objects for route tests. A successful local D1 run with mocked Drive is **not** a real Google Drive verification; record separately whether the local D1 demo and the real Drive upload/read/delete path were each verified. Never point these commands at a remote database unless the owner has approved that exact environment.
 
