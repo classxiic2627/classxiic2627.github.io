@@ -1198,7 +1198,22 @@ test("rejects oversized JSON bodies when Content-Length is absent", async () => 
     body
   });
   assert.equal(req.headers.get("content-length"), null);
-  const response = await worker.fetch(req, env);
+  const jsonEnv = {
+    ...env,
+    DB: {
+      prepare() {
+        return {
+          bind() {
+            return {
+              first: async () => ({ n: 0 }),
+              run: async () => ({ success: true })
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(req, jsonEnv);
   assert.equal(response.status, 413);
   assert.deepEqual(await response.json(), { error: "Request body is too large." });
 });
