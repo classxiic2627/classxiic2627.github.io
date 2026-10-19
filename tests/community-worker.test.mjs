@@ -779,3 +779,19 @@ test("fails closed for browser origins when ALLOWED_ORIGIN is missing", async ()
   assert.equal(response.status, 403);
   assert.deepEqual(await response.json(), { error: "Origin not allowed." });
 });
+
+test("rejects passwords made entirely of whitespace", async () => {
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "l".repeat(64),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ newPassword: " ".repeat(16) })
+  }), authenticatedEnv(adminSession));
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: "The new class upload password must be at least 12 characters."
+  });
+});
