@@ -13,6 +13,8 @@
  * hashed with PBKDF2-SHA-256; bearer tokens are stored only as SHA-256 hashes.
  */
 const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
+const MAX_JSON_BYTES = 1024 * 1024;
+const MAX_UPLOAD_REQUEST_BYTES = MAX_MEDIA_BYTES + 1024 * 1024;
 const SESSION_DEFAULT_SECONDS = 12 * 60 * 60;
 const PBKDF2_ITERATIONS = 210000;
 const AUTH_WINDOW_SECONDS = 15 * 60;
@@ -92,10 +94,43 @@ function accountIdFromPath(path, suffix) {
   const accountId = Number(match[1]);
   return Number.isSafeInteger(accountId) && accountId > 0 ? accountId : null;
 }
+async function readLimitedBody(request, maxBytes, message) {
+  const declaredLength = request.headers.get("content-length");
+  if (declaredLength && /^\\d+$/.test(declaredLength) && Number(declaredLength) > maxBytes) {
+    fail(message, 413);
+  }
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch {}
+        fail(message, 413);
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error && Number.isInteger(error.status)) throw error;
+    fail("Unable to read request body.", 400);
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
 async function readJson(request) {
-  const length = Number(request.headers.get("content-length") || 0);
-  if (length > 1024 * 1024) fail("Request body is too large.", 413);
-  try { return await request.json(); } catch { fail("Invalid JSON."); }
+  const bytes = await readLimitedBody(request, MAX_JSON_BYTES, "Request body is too large.");
+  try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { fail("Invalid JSON."); }
 }
 async function auth(request, env, requiredRole = null) {
   const header = request.headers.get("Authorization") || "";
@@ -342,10 +377,16 @@ async function handle(request, env) {
     const user = await auth(request, env, "member");
     await requireChangedPassword(user);
     if (!env.MEDIA) fail("Media storage is not configured; uploads are unavailable.", 503);
-    const length = Number(request.headers.get("content-length") || 0);
-    if (length > MAX_MEDIA_BYTES + 1024 * 1024) fail("Upload exceeds 15 MB.", 413);
+    // Bound the complete multipart request before parsing it. Content-Length is
+    // only an early-rejection hint; the streamed byte count is authoritative.
+    const uploadBody = await readLimitedBody(request, MAX_UPLOAD_REQUEST_BYTES, "Upload request exceeds the 15 MB media limit.");
+    const boundedRequest = new Request(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: uploadBody
+    });
     let form;
-    try { form = await request.formData(); }
+    try { form = await boundedRequest.formData(); }
     catch { fail("Invalid upload form."); }
     const type = form.get("type");
     const title = cleanText(form.get("title"), 120, "Title", true);
