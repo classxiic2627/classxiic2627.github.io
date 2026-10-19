@@ -319,6 +319,44 @@ test("disabling a member and revoking their sessions use one atomic D1 batch", a
   assert.match(batchStatements[1].sql,/DELETE FROM sessions WHERE user_id/);
 });
 
+test("public registration is not implemented", async () => {
+  const response = await worker.fetch(request("/api/register", {
+    method:"POST",
+    headers:{Origin:origin,"Content-Type":"application/json"}
+  }),env);
+  assert.equal(response.status,404);
+  assert.deepEqual(await response.json(),{error:"Not found."});
+});
+
+test("member disable route cannot delete sessions for an administrator ID", async () => {
+  let statements = [];
+  const accountEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {sql,values,first:async()=>adminSession,run:async()=>({success:true,meta:{changes:1}})};
+          }
+        };
+      },
+      async batch(items) {
+        statements=items;
+        return [{success:true,meta:{changes:0}},{success:true,meta:{changes:0}}];
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/users/8/status", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer " + "r".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({disabled:true})
+  }),accountEnv);
+  assert.equal(response.status,404);
+  assert.match(statements[1].sql,/EXISTS \(SELECT 1 FROM users WHERE id=\? AND role='member' AND disabled=1\)/);
+  assert.deepEqual(statements[1].values,[8,8]);
+});
+
 test("protected upload route rejects missing authentication", async () => {
   const response = await worker.fetch(request("/api/content", {
     method: "POST",
