@@ -24,12 +24,11 @@ Request bodies are bounded independently of the `Content-Length` header: JSON re
 From the repository root with Node.js 22 or newer:
 
 ```sh
-node --check community.js
-node --check backend/worker.js
-node --test tests/community-worker.test.mjs
+npm run check
+npm test
 ```
 
-GitHub Actions also checks DOM references and validates the D1 schema with SQLite. Mock tests do not replace staging tests against a real Worker and database.
+The dependency-free `package.json` defines the same checks used by CI. GitHub Actions also checks DOM references and validates that `backend/migrations/0001_initial.sql` produces the same schema objects as `backend/schema.sql`. Mock tests do not replace staging tests against a real Worker and database.
 
 ## Bindings and configuration
 
@@ -42,6 +41,13 @@ The Worker currently expects:
 - Optional `SESSION_TTL_SECONDS`: session lifetime, bounded by the Worker.
 
 **Resource and migration caution:** Do not create paid resources or change a live database without explicit approval and a verified cost/schema review. Confirm current Cloudflare pricing and account limits before choosing R2. Do not apply `schema.sql` to an existing D1 as if it were a forward migration. Export/inspect the live schema first and prepare a reviewed, forward-only migration.
+
+### Wrangler template and D1 migrations
+
+- `wrangler.example.toml` is a placeholder-only staging template. Copy it to `wrangler.toml` locally, replace the D1 database ID and R2 bucket name only after those staging resources are approved and verified, and keep the local file uncommitted. `.gitignore` excludes `wrangler.toml`, `.dev.vars`, and local Wrangler state.
+- The template declares a daily Cron Trigger for the Worker's `scheduled()` cleanup handler. This is configuration intent, not proof that a deployed trigger exists or fires; verify it in staging.
+- `backend/migrations/0001_initial.sql` is the versioned **initial schema for a new, empty database**. CI checks it against `backend/schema.sql`. It is not a safe migration for an existing D1 database. Inspect the actual schema and migration history and prepare a separate, reviewed forward migration if data or tables already exist.
+- No database ID, bucket, secret, deployed Worker URL, or production environment is supplied by this template. Do not deploy or run migrations until the resource identity, schema, cost, and recovery plan are verified and the repository owner explicitly approves.
 
 The health endpoint checks both D1 and R2 and returns `503` if either is unavailable. Without R2, database-backed account and announcement routes can still be exercised, but media features remain unavailable. A successful local mock test is not evidence that deployed bindings, secrets, migrations, or origin settings are correct. The frontend's `API_BASE` in `community.js` is intentionally empty right now, so the site is not connected to a deployed Worker. Set it only after an approved deployment and staging test; do not invent a Worker URL.
 
