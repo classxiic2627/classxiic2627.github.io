@@ -1205,7 +1205,7 @@ test("admin readiness maps a D1 session-lookup outage to service unavailable", a
     DB: {
       prepare() {
         return {
-          bind() { return { first: async () => { throw new Error("simulated D1 session lookup outage"); } }; },
+          bind() { return { first: async () => { const error = new Error("simulated D1 session lookup outage"); error.status = 500; throw error; } }; },
           first: async () => ({ok:1})
         };
       }
