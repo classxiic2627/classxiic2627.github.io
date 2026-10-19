@@ -271,6 +271,14 @@ async function handle(request, env) {
   return json({error:"Not found."},404,env.ALLOWED_ORIGIN);
 }
 export default {
+  async scheduled(_controller, env, ctx) {
+    if (!env.DB) return;
+    const now = Math.floor(Date.now() / 1000);
+    ctx.waitUntil(Promise.all([
+      env.DB.prepare("DELETE FROM auth_attempts WHERE attempted_at < ?").bind(now - 86400).run(),
+      env.DB.prepare("DELETE FROM sessions WHERE expires_at <= ?").bind(now).run()
+    ]));
+  },
   async fetch(request, env) {
     const origin = request.headers.get("Origin");
     if (request.method === "OPTIONS") {
