@@ -117,6 +117,7 @@ async function main() {
 
   if (process.env.LOCAL_VERIFY_DRIVE === "1") {
     let uploadedItemId = null;
+    let driveCleanupFailure = "";
     try {
       const form = new FormData();
       form.set("type", "image");
@@ -159,15 +160,18 @@ async function main() {
           if (deletedMedia.response.status === 200) {
             console.log("PASS: real Google Drive deletion.");
           } else {
-            console.error("WARNING: could not clean up Drive smoke-test item " + uploadedItemId +
-              " (HTTP " + deletedMedia.response.status + "). Remove it manually from the dedicated test folder.");
+            driveCleanupFailure = "Could not clean up Drive smoke-test item " + uploadedItemId +
+              " (HTTP " + deletedMedia.response.status + "). Remove it manually from the dedicated test folder.";
+            console.error("WARNING: " + driveCleanupFailure);
           }
         } catch (cleanupError) {
-          console.error("WARNING: Drive smoke-test cleanup failed for item " + uploadedItemId +
-            "; remove it manually from the dedicated test folder. " + String(cleanupError));
+          driveCleanupFailure = "Drive smoke-test cleanup failed for item " + uploadedItemId +
+            "; remove it manually from the dedicated test folder. " + String(cleanupError);
+          console.error("WARNING: " + driveCleanupFailure);
         }
       }
     }
+    if (driveCleanupFailure) throw new Error(driveCleanupFailure);
   } else {
     console.log("INFO: skipped real Drive test; set LOCAL_VERIFY_DRIVE=1 to opt in.");
   }
