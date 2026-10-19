@@ -35,23 +35,64 @@ The dependency-free `package.json` defines the same checks used by CI. GitHub Ac
 The Worker currently expects:
 
 - `DB`: a Cloudflare D1 binding for account, session, announcement, and content metadata operations.
-- `GOOGLE_CLIENT_ID`: OAuth client ID used for the server-side Google OAuth refresh-token flow.
-- `GOOGLE_CLIENT_SECRET` and `GOOGLE_REFRESH_TOKEN`: Worker secrets. They must never be placed in browser code, `wrangler.toml`, or Git. The OAuth grant must include the Google Drive scope needed for the dedicated folder.
-- `GOOGLE_DRIVE_FOLDER_ID`: ID of the dedicated folder the authorized Google account can access. Keep the folder private; the Worker proxies media through its API.
+- `GOOGLE_CLIENT_ID`: OAuth client ID used by the Worker to refresh access tokens.
+- `GOOGLE_CLIENT_SECRET` and `GOOGLE_REFRESH_TOKEN`: server-side secrets. Never put them in browser code, HTML, Git, or client-visible API responses.
+- `GOOGLE_DRIVE_FOLDER_ID`: a dedicated folder accessible to the Google account that authorized the refresh token. The Worker stores uploaded files privately in this folder and proxies retrieval through `/api/media/:id`; it does not make Drive files public.
 - `SETUP_SECRET`: a long random Worker secret, used only for one-time setup.
-- `ALLOWED_ORIGIN`: the exact HTTPS origin of the deployed static site, with no trailing slash.
+- `ALLOWED_ORIGIN`: the exact origin of the static site, with no trailing slash.
 - Optional `SESSION_TTL_SECONDS`: session lifetime, bounded by the Worker.
 
-**Resource and migration caution:** Do not create paid resources or change a live database without explicit approval and a verified cost/schema review. Google Drive integration still requires an owner-authorized OAuth client, refresh token, and dedicated folder; do not create credentials or grant access without approval. Do not apply `schema.sql` to an existing D1 as if it were a forward migration. Export/inspect the live schema first and prepare a reviewed, forward-only migration.
+**Google setup prerequisite:** enable the Google Drive API in a Google Cloud project, configure an OAuth consent screen and OAuth client, authorize a dedicated Google account with the Drive scope, obtain a refresh token, and create a dedicated folder in that account's Drive. Keep the OAuth client secret and refresh token server-side. Ensure the consent configuration permits a durable refresh token; test-mode OAuth grants can expire. Do not paste credentials into GitHub comments or commit them. The owner must supply/securely configure the credentials and folder ID before real Drive uploads can be verified.
 
-### Wrangler template and D1 migrations
+**Resource and migration caution:** do not deploy to production or change a live database without explicit approval and a verified schema/recovery plan. Do not apply `schema.sql` to an existing D1 as if it were a forward migration. Export/inspect the live schema first and prepare a reviewed, forward-only migration.
 
-- `wrangler.example.toml` is a placeholder-only staging template. Copy it to `wrangler.toml` locally and replace placeholders only with verified, approved values. Keep the filled file uncommitted. `.gitignore` excludes `wrangler.toml`, `.dev.vars`, and local Wrangler state. Store `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, and `SETUP_SECRET` as Worker secrets, never as TOML vars.
-- The template declares a daily Cron Trigger for the Worker's `scheduled()` cleanup handler. This is configuration intent, not proof that a deployed trigger exists or fires; verify it in staging.
+### Wrangler templates and D1 migrations
+
+- `wrangler.example.toml` is a placeholder-only staging template. Copy it to `wrangler.toml` locally and replace the D1 database ID, site origin, OAuth client ID, and Drive folder ID only after staging resources are approved and verified. Keep the filled file uncommitted.
+- `wrangler.local.example.toml` describes an isolated local D1 database for local Worker testing. Copy it to `wrangler.local.toml`; this local database is separate from any remote D1 database.
+- Put `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, and `SETUP_SECRET` in `.dev.vars` for local testing or use Wrangler secrets in a deployed environment. Both `.dev.vars` and filled Wrangler configs are ignored by Git.
+- The staging template declares a daily Cron Trigger for the Worker's `scheduled()` cleanup handler. This is configuration intent, not proof that a deployed trigger exists or fires; verify it in staging.
 - `backend/migrations/0001_initial.sql` is the versioned **initial schema for a new, empty database**. CI checks it against `backend/schema.sql`. It is not a safe migration for an existing D1 database. Inspect the actual schema and migration history and prepare a separate, reviewed forward migration if data or tables already exist.
-- No database ID, bucket, secret, deployed Worker URL, or production environment is supplied by this template. Do not deploy or run migrations until the resource identity, schema, cost, and recovery plan are verified and the repository owner explicitly approves.
+- No database ID, OAuth secret, refresh token, deployed Worker URL, or production environment is supplied by these templates. Do not deploy or run migrations against a remote database until resource identity, schema, and recovery plan are verified and the repository owner explicitly approves.
 
-The health endpoint checks D1 and verifies access to the configured Google Drive folder; it returns `503` if either check fails. Mocked Google API tests do not prove that a real OAuth refresh token or folder permission works. The frontend reads the Worker URL from the `community-api-base` meta element in `community.html`; it is intentionally blank until a Worker origin has been approved and verified. Do not invent or commit a live Worker URL.
+The health endpoint checks D1 and access to the configured Google Drive folder, returning `503` if either is unavailable. The frontend reads its Worker origin from the `community-api-base` meta value in `community.html`. It intentionally remains blank until a verified Worker origin is configured; do not invent a URL or point the published site at localhost.
+
+## Reproducible local demo
+
+Prerequisites: Node.js 22+, npm, and Wrangler 4. Start from a clean checkout of this feature branch.
+
+1. Copy `wrangler.local.example.toml` to `wrangler.local.toml`. The local D1 ID/name is deliberately separate from staging.
+2. Create a root `.dev.vars` file (ignored by Git) with:
+   ```dotenv
+   SETUP_SECRET="replace-with-a-long-random-local-only-secret"
+   GOOGLE_CLIENT_SECRET="your-oauth-client-secret"
+   GOOGLE_REFRESH_TOKEN="your-refresh-token"
+   ```
+   The OAuth client ID and Drive folder ID go in `wrangler.local.toml`. For auth-only work you can leave the Google secrets unset; account/login routes use D1, while health and media routes fail closed until Drive is configured.
+3. Apply the initial migration to **local D1 only**, then start the Worker:
+   ```sh
+   npx wrangler@4 d1 migrations apply community-hub-local --local --config wrangler.local.toml
+   npx wrangler@4 dev --local --config wrangler.local.toml --ip 127.0.0.1 --port 8787
+   ```
+4. In a second terminal, serve the existing static site from the repository root:
+   ```sh
+   python -m http.server 8000 --bind 127.0.0.1
+   ```
+5. In a local-only working copy of `community.html`, set `<meta name="community-api-base" content="http://127.0.0.1:8787">`. Do not commit that localhost value to the published site.
+6. Initialize the first admin from a trusted terminal, not the browser. For example, use PowerShell and keep the secret/password in local environment variables:
+   ```powershell
+   $headers = @{ "X-Setup-Secret" = $env:SETUP_SECRET }
+   $body = @{
+     adminUsername = "local-admin"
+     adminEmail = "admin@example.test"
+     adminDisplayName = "Local Admin"
+     adminPassword = $env:LOCAL_ADMIN_PASSWORD
+   } | ConvertTo-Json
+   Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8787/api/setup" -Headers $headers -ContentType "application/json" -Body $body
+   ```
+7. Open `http://127.0.0.1:8000/community.html`, sign in as the admin, create a member, sign in as that member, and test an upload. A real upload requires valid Google OAuth refresh credentials and an accessible Drive folder; mocked CI tests do not prove that external account configuration works.
+
+Use `npm run check` and `npm test` for fast unit/regression checks. The current CI suite uses a fake Google API and fake D1 objects for route tests. A successful local D1 run with mocked Drive is **not** a real Google Drive verification; record separately whether the local D1 demo and the real Drive upload/read/delete path were each verified. Never point these commands at a remote database unless the owner has approved that exact environment.
 
 ## One-time administrator setup
 
