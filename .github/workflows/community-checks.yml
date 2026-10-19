@@ -54,6 +54,35 @@ jobs:
         run: npm run check
       - name: Run Worker tests
         run: npm test
+      - name: Run local D1 account-flow smoke test
+        shell: bash
+        run: |
+          npm install --no-save --package-lock=false wrangler@4
+          export SETUP_SECRET="CI-local-setup-secret-not-for-production-2026"
+          printf 'SETUP_SECRET="%s"\n' "$SETUP_SECRET" > .dev.vars
+          npx wrangler d1 migrations apply community-hub-local --local --config wrangler.local.example.toml
+          npx wrangler dev --local --config wrangler.local.example.toml --ip 127.0.0.1 --port 8787 > /tmp/community-worker.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl --silent --show-error --fail http://127.0.0.1:8787/api/announcements >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/community-worker.log
+            echo "Local Wrangler Worker did not become ready." >&2
+            exit 1
+          fi
+          LOCAL_API_URL="http://127.0.0.1:8787" \
+          LOCAL_SETUP_SECRET="$SETUP_SECRET" \
+          LOCAL_ADMIN_USERNAME="ci-local-admin" \
+          LOCAL_ADMIN_EMAIL="ci-local-admin@example.test" \
+          LOCAL_ADMIN_PASSWORD="CI-Local-Admin-Password-123!" \
+          npm run smoke:local
       - name: Check Community Hub DOM references
         run: |
           python3 - <<'PY'
