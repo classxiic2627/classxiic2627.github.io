@@ -156,6 +156,7 @@ async function handle(request, env) {
     const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first();
     if (count.n > 0) fail("Setup has already been completed. Rotate the setup secret and remove it when finished.", 409);
     const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
     const adminUsername = cleanText(body.adminUsername, 64, "Admin username", true);
     const adminPassword = body.adminPassword;
     const memberPassword = body.memberPassword;
