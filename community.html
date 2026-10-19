@@ -46,12 +46,13 @@
         <label>Confirm new password<input id="memberConfirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
         <div class="community-actions"><button class="button button-primary" type="submit">Save new password</button><button class="button button-ghost" id="cancelMemberPasswordChange" type="button">Cancel</button></div>
       </form>
+      <div id="memberSessionActions" class="community-actions" hidden><button class="button button-ghost" id="showMemberPasswordChange" type="button">Change password</button><button class="button button-ghost" id="memberLogout" type="button">Sign out</button></div>
       <form id="uploadForm" class="community-form" hidden>
         <label>Media type<select id="uploadType" required><option value="image">Photo</option><option value="video">Video</option></select></label>
         <label>Photo or video<input id="uploadMedia" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/ogg" required></label>
         <label>Title<input id="uploadTitle" type="text" maxlength="120" required></label>
         <label>Caption<textarea id="uploadCaption" maxlength="1000" placeholder="Add a little context (optional)"></textarea></label>
-        <div class="community-actions"><button class="button button-primary" type="submit">Publish memory</button><button class="button button-ghost" id="showMemberPasswordChange" type="button">Change password</button><button class="button button-ghost" id="memberLogout" type="button">Sign out</button></div>
+        <div class="community-actions"><button class="button button-primary" type="submit">Publish memory</button></div>
         <small>Maximum file size: 15 MB. Posts are published immediately; only share media with classmates' consent.</small>
       </form>
     </section>
@@ -68,11 +69,12 @@
         <label>Confirm new password<input id="adminConfirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
         <div class="community-actions"><button class="button button-primary" type="submit">Save new password</button><button class="button button-ghost" id="cancelAdminPasswordChange" type="button">Cancel</button></div>
       </form>
+      <div id="adminSessionActions" class="community-actions" hidden><button id="showAdminPasswordChange" class="button button-ghost" type="button">Change password</button><button id="adminLogout" class="button button-ghost" type="button">Admin sign out</button></div>
       <div id="adminArea" hidden>
         <h3>Published posts</h3><div id="adminItems"></div>
         <h3>Post an announcement</h3>
         <form id="announcementForm" class="community-form"><label>Title<input id="announcementTitle" maxlength="120" required></label><label>Announcement<textarea id="announcementBody" maxlength="3000" required></textarea></label><button class="button button-primary" type="submit">Publish announcement</button></form>
-        <div class="community-actions" style="margin-top:16px"><button id="showAdminPasswordChange" class="button button-ghost" type="button">Change password</button><button id="adminLogout" class="button button-ghost" type="button">Admin sign out</button></div>
+
       </div>
     </section>
     <section class="community-panel"><h2>Notifications</h2><p>Browser push notifications are not active yet. No notification permission will be requested.</p><button id="subscribeButton" class="button button-ghost" type="button">Check notification status</button><p id="pushStatus" class="community-status" role="status"></p></section>
