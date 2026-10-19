@@ -232,3 +232,25 @@ jobs:
               raise SystemExit("The local template must use Google Drive, not R2.")
           print("Staging and local Wrangler TOML parse with isolated D1 and Google Drive configuration.")
           PY
+
+  windows-local-demo-script:
+    name: Validate Windows local demo script
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Parse PowerShell demo script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'scripts/demo-local.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+          Write-Host "PowerShell local demo script syntax is valid."
