@@ -66,7 +66,7 @@ async function verifyPassword(password, salt, expected) {
   return diff === 0;
 }
 function validPassword(password) {
-  return typeof password === "string" && password.length >= 12 && password.length <= 256;
+  return typeof password === "string" && password.length >= 12 && password.length <= 256 && password.trim().length > 0;
 }
 function cleanText(value, max, field, required = false) {
   if (typeof value !== "string") { if (!required && (value == null || value === "")) return ""; fail(field + " must be text."); }
