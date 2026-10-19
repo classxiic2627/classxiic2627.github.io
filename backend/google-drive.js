@@ -121,14 +121,20 @@ export function createGoogleDriveMedia(env, fetchImpl = fetch) {
     async put(name, body, options = {}) {
       const mimeType = options.httpMetadata?.contentType;
       if (typeof mimeType !== "string" || !mimeType) providerError("A media content type is required.", 400);
-      const fileBytes = body instanceof ReadableStream
-        ? new Uint8Array(await new Response(body).arrayBuffer())
-        : body instanceof ArrayBuffer
+      let uploadBody = body;
+      let uploadSize = Number(options.size);
+      // Keep a known-size stream streaming through the Worker fetch API. This
+      // avoids another full-file copy for videos near the 50 MiB request limit.
+      if (!(body instanceof ReadableStream) || !Number.isSafeInteger(uploadSize) || uploadSize < 1) {
+        const fileBytes = body instanceof ArrayBuffer
           ? new Uint8Array(body)
           : ArrayBuffer.isView(body)
             ? new Uint8Array(body.buffer, body.byteOffset, body.byteLength)
             : new Uint8Array(await new Response(body).arrayBuffer());
-      if (!fileBytes.byteLength) providerError("Media upload cannot be empty.", 400);
+        uploadBody = fileBytes;
+        uploadSize = fileBytes.byteLength;
+      }
+      if (!uploadSize) providerError("Media upload cannot be empty.", 400);
 
       // Drive documents multipart uploads for files up to 5 MB; larger uploads
       // must use the resumable protocol. Use it for every size so the 50 MiB
@@ -146,7 +152,7 @@ export function createGoogleDriveMedia(env, fetchImpl = fetch) {
           headers: {
             "Content-Type": "application/json; charset=UTF-8",
             "X-Upload-Content-Type": mimeType,
-            "X-Upload-Content-Length": String(fileBytes.byteLength)
+            "X-Upload-Content-Length": String(uploadSize)
           },
           body: JSON.stringify(metadata)
         },
@@ -170,10 +176,10 @@ export function createGoogleDriveMedia(env, fetchImpl = fetch) {
           method: "PUT",
           headers: {
             "Content-Type": mimeType,
-            "Content-Length": String(fileBytes.byteLength),
-            "Content-Range": "bytes 0-" + (fileBytes.byteLength - 1) + "/" + fileBytes.byteLength
+            "Content-Length": String(uploadSize),
+            "Content-Range": "bytes 0-" + (uploadSize - 1) + "/" + uploadSize
           },
-          body: fileBytes
+          body: uploadBody
         },
         fetchImpl,
         [308]
@@ -190,7 +196,7 @@ export function createGoogleDriveMedia(env, fetchImpl = fetch) {
       return {
         key: result.id,
         id: result.id,
-        size: Number(result.size) || fileBytes.byteLength,
+        size: Number(result.size) || uploadSize,
         httpMetadata: { contentType: result.mimeType || mimeType }
       };
     },
