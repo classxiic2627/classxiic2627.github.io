@@ -51,6 +51,7 @@ New-Item -ItemType Directory -Force (Join-Path $root ".wrangler") | Out-Null
 $workerCommand = 'npx --yes wrangler@4 dev --local --config wrangler.local.toml --ip 127.0.0.1 --port 8787 > "' + $workerLog + '" 2>&1'
 $worker = Start-Process -FilePath $env:ComSpec -ArgumentList @("/c", $workerCommand) -WorkingDirectory $root -PassThru -WindowStyle Hidden
 $static = $null
+$staticRoot = $null
 try {
   $ready = $false
   for ($i = 0; $i -lt 60; $i++) {
@@ -88,7 +89,14 @@ try {
     }
   }
 
-  $static = Start-Process -FilePath "python" -ArgumentList @("-m","http.server","8000","--bind","127.0.0.1") -WorkingDirectory $root -PassThru -WindowStyle Hidden -RedirectStandardOutput $staticLog -RedirectStandardError $staticErrorLog
+  # Serve only the Community page and its direct static dependencies. Never expose
+  # repository-root secrets/config such as .dev.vars or local demo credentials.
+  $staticRoot = Join-Path $env:TEMP ("class-xiic-community-demo-" + [guid]::NewGuid().ToString("N"))
+  New-Item -ItemType Directory -Path $staticRoot | Out-Null
+  foreach ($asset in @("community.html", "community.js", "styles.css")) {
+    Copy-Item (Join-Path $root $asset) (Join-Path $staticRoot $asset)
+  }
+  $static = Start-Process -FilePath "python" -ArgumentList @("-m","http.server","8000","--bind","127.0.0.1") -WorkingDirectory $staticRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $staticLog -RedirectStandardError $staticErrorLog
   Start-Sleep -Seconds 1
   if ($static.HasExited) {
     if (Test-Path $staticErrorLog) { Get-Content $staticErrorLog -Tail 20 }
@@ -108,5 +116,8 @@ try {
   if ($static -and -not $static.HasExited) { Stop-Process -Id $static.Id -Force -ErrorAction SilentlyContinue }
   if ($worker -and -not $worker.HasExited) {
     & taskkill.exe /PID $worker.Id /T /F 2>$null | Out-Null
+  }
+  if ($staticRoot -and (Test-Path $staticRoot)) {
+    Remove-Item -LiteralPath $staticRoot -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
