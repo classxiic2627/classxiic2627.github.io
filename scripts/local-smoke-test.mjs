@@ -79,7 +79,7 @@ async function main() {
     token: adminToken,
     body: { username, email, displayName: "Local Smoke Student", temporaryPassword }
   });
-  assert(created.response.status === 201 && Number.isSafeInteger(Number(created.data.id)),
+  assert(created.response.status === 201 && Number.isSafeInteger(Number(created.data.id)) && Number(created.data.id) > 0,
     "Admin could not create a student account (HTTP " + created.response.status + ").");
   const memberId = Number(created.data.id);
   console.log("PASS: admin created a student account.");
