@@ -5,6 +5,9 @@ on:
     paths:
       - "community.js"
       - "community.html"
+      - "package.json"
+      - "wrangler.example.toml"
+      - ".gitignore"
       - "backend/**"
       - "tests/**"
       - ".github/workflows/community-checks.yml"
@@ -15,6 +18,9 @@ on:
     paths:
       - "community.js"
       - "community.html"
+      - "package.json"
+      - "wrangler.example.toml"
+      - ".gitignore"
       - "backend/**"
       - "tests/**"
       - ".github/workflows/community-checks.yml"
@@ -33,12 +39,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Check frontend JavaScript syntax
-        run: node --check community.js
-      - name: Check Worker JavaScript syntax
-        run: node --check backend/worker.js
-      - name: Run Worker smoke tests
-        run: node --test tests/community-worker.test.mjs
+      - name: Check JavaScript syntax
+        run: npm run check
+      - name: Run Worker tests
+        run: npm test
       - name: Check Community Hub DOM references
         run: |
           python3 - <<'PY'
@@ -75,6 +79,20 @@ jobs:
           connection = sqlite3.connect(":memory:")
           schema = Path("backend/schema.sql").read_text(encoding="utf-8")
           connection.executescript(schema)
+
+          migration_connection = sqlite3.connect(":memory:")
+          migration = Path("backend/migrations/0001_initial.sql").read_text(encoding="utf-8")
+          migration_connection.executescript(migration)
+
+          def schema_objects(db):
+              return list(db.execute(
+                  "SELECT type, name, tbl_name, sql FROM sqlite_master "
+                  "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+              ))
+
+          if schema_objects(connection) != schema_objects(migration_connection):
+              raise SystemExit("Initial D1 migration does not match backend/schema.sql.")
+
           expected = {"users", "sessions", "content", "announcements", "push_subscriptions", "auth_attempts"}
           actual = {
               row[0] for row in connection.execute(
@@ -119,5 +137,5 @@ jobs:
           else:
               raise SystemExit("Email uniqueness is not case-insensitive.")
 
-          print(f"Schema OK: {len(expected)} expected tables and core constraints validated.")
+          print(f"Schema and initial migration match: {len(expected)} expected tables and core constraints validated.")
           PY
