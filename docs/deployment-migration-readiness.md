@@ -120,7 +120,7 @@ Before any approved migration:
 - Admin setup is intentionally CLI/trusted-tool only. `X-Setup-Secret` must remain out of browser CORS and frontend state. Rotate/remove `SETUP_SECRET` immediately after successful initialization.
 - Passwords are hashed with PBKDF2-SHA-256 and per-password salts; session bearer tokens are stored as hashes. Account lifecycle and forced-password-change paths have mock regression tests.
 - Layered application throttling uses a 100-attempt/15-minute IP-and-role ceiling and a 10-attempt/15-minute per-account bucket. This reduces collateral lockout behind shared school Wi-Fi but means someone who knows a username can intentionally trigger temporary account lockout. Confirm the trade-off and add monitoring/edge limits before launch.
-- **Decision accepted for the pre-staging API contract:** public `GET /api/health` must be a cheap liveness response and must not query D1, refresh OAuth, or call Google Drive. Add admin-authenticated `GET /api/admin/health` for detailed D1 + Drive readiness. Cover both routes with tests and document that the admin route requires a valid admin session. This is approved as a code change, not deployment approval; until implemented and tested, the current public health route remains a launch blocker.
+- **Health contract implemented, verification pending:** public `GET /api/health` is a cheap liveness response and does not query D1, refresh OAuth, or call Google Drive. Admin-authenticated `GET /api/admin/health` checks D1 + Drive readiness after authentication and the forced-password-change gate. Exact-head run [39292316028](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292316028) failed Worker tests; keep this contract unverified until the regressions are fixed and CI passes.
 - Request bodies are bounded by streamed byte counts, and allowed media types have basic signature checks. These checks are not full media decoding or malware scanning.
 - Push delivery is not implemented; the API deliberately reports it unavailable.
 - The service-worker navigation tests constrain notification-click navigation to the archive origin, but that does not implement push delivery or prove deployment configuration.
@@ -128,7 +128,7 @@ Before any approved migration:
 ## 5. Release checklist
 
 - [x] Prior code head `446c68b3e335bd8384b3fdcfd3430148ad8e7763` passed run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369), including 71/71 automated tests and syntax/DOM/schema checks.
-- [ ] Current code head `ca3d24bb7c9b05b4e286625a7fa0cd345db5fcc5` passes exact-head CI; run [39292316028](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292316028) is failing Worker tests and must be rerun after fixes.
+- [ ] Fix Worker-test failures and obtain a passing exact-head CI run after the health-route split; run [39292316028](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292316028) failed.
 - [x] Local D1 smoke script passed in CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369); real Google Drive remains unverified.
 - [ ] Verify real Google OAuth and Drive folder access using a dedicated test account/folder.
 - [ ] Resolve public-media visibility and class-photo consent/removal policy.
