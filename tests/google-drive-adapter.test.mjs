@@ -5,6 +5,11 @@ import worker from "../backend/worker.js";
 const origin = "https://classxiic2627.github.io";
 let sequence = 0;
 
+const adminSession = {
+  id: 8, username: "archive-admin", display_name: "Archive Admin", role: "admin",
+  disabled: 0, must_change_password: 0, expires_at: Math.floor(Date.now() / 1000) + 3600
+};
+
 function envFor({ first, run } = {}) {
   sequence += 1;
   return {
@@ -57,7 +62,7 @@ test("health verifies the configured private Drive folder through server-side OA
   let tokenRequests = 0;
   let folderRequests = 0;
   const env = envFor({
-    first: async sql => sql.includes("SELECT 1 AS ok") ? { ok: 1 } : null
+    first: async sql => sql.includes("FROM sessions s JOIN users") ? adminSession : sql.includes("SELECT 1 AS ok") ? { ok: 1 } : null
   });
 
   const response = await withFetch(async (url, options = {}) => {
@@ -76,7 +81,7 @@ test("health verifies the configured private Drive folder through server-side OA
       name: "Class media",
       mimeType: "application/vnd.google-apps.folder"
     }), { status: 200, headers: { "Content-Type": "application/json" } });
-  }, () => worker.fetch(request("/api/health"), env));
+  }, () => worker.fetch(request("/api/admin/health", {headers:{Authorization:"Bearer " + "a".repeat(64)}}), env));
 
   assert.equal(response.status, 200);
   assert.equal((await response.json()).storage, "google-drive");
