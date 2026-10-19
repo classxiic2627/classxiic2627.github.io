@@ -140,7 +140,7 @@
     event.preventDefault();
     const file = $("uploadMedia").files[0];
     if (!file) { status("memberStatus", "Choose a photo or video first."); return; }
-    if (file.size > 15 * 1024 * 1024) { status("memberStatus", "Media must be 15 MB or smaller."); return; }
+    if (file.size > 50 * 1024 * 1024) { status("memberStatus", "Media must be 50 MB or smaller."); return; }
     const form = new FormData();
     form.set("type", $("uploadType").value);
     form.set("title", $("uploadTitle").value.trim());
