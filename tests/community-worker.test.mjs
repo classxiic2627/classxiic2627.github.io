@@ -28,6 +28,8 @@ test("health endpoint returns a non-cacheable success response", async () => {
   }), env);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
   assert.equal(response.headers.get("access-control-allow-origin"), origin);
   assert.deepEqual(await response.json().then(({ ok, service }) => ({ ok, service })), {
     ok: true,
