@@ -52,11 +52,20 @@ if (-not (Test-Path wrangler.local.toml)) {
 }
 npm install --no-save --package-lock=false wrangler@4
 
-# Preserve existing Google/local values in .dev.vars; replace only SETUP_SECRET.
+# Use a disposable local-only secret. Preserve any existing Google/local values in .dev.vars.
 $varsPath = ".dev.vars"
 $existingVars = if (Test-Path $varsPath) { Get-Content $varsPath -Raw } else { "" }
 $setupLine = 'SETUP_SECRET="Local-Demo-Setup-Secret-2026-Change-Me"'
-if ($existingVars -match '(?m)^SETUP_SECRET=.*
+if ($existingVars -match '(?m)^SETUP_SECRET=.*$') {
+  $existingVars = [regex]::Replace($existingVars, '(?m)^SETUP_SECRET=.*$', [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $setupLine })
+} else {
+  $existingVars = $existingVars.TrimEnd() + [Environment]::NewLine + $setupLine + [Environment]::NewLine
+}
+Set-Content -Path $varsPath -Value $existingVars -Encoding ascii
+
+npx wrangler@4 d1 migrations apply community-hub-local --local --config wrangler.local.toml
+npx wrangler@4 dev --local --config wrangler.local.toml --ip 127.0.0.1 --port 8787
+```
 
 Leave that terminal running. The local config uses a separate local D1 database and has no remote database ID. Keep `wrangler.local.toml` and `.dev.vars` uncommitted.
 
