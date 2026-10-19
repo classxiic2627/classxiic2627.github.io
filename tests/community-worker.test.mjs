@@ -1663,6 +1663,10 @@ test("keeps the 50 MiB upload cap aligned across Worker, browser, UI, and docs",
   assert.match(htmlSource, /uploaders cannot delete their own uploads/i);
   assert.doesNotMatch(htmlSource, /classmates' consent|permission from people shown/i);
   assert.ok(readmeSource.includes("51 MiB (50 MiB media"));
+  assert.match(readmeSource, /no prior-consent requirement/i);
+  assert.match(readmeSource, /uploaders cannot delete their own posts/i);
+  assert.doesNotMatch(readmeSource, /Before launch, establish a class-photo consent and removal policy/i);
+  assert.doesNotMatch(readmeSource, /Do not upload photos\/videos without permission/i);
 });
 
 test("rejects multipart uploads over the 50 MB limit from declared length before parsing", async () => {
