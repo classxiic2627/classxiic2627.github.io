@@ -1377,6 +1377,43 @@ test("member can replace a temporary password and atomically revoke all sessions
   assert.ok(statements.some(item=>item.sql.includes("DELETE FROM sessions WHERE user_id=?")));
 });
 
+test("scheduled cleanup removes expired sessions and old auth-attempt rows", async () => {
+  const statements = [];
+  let waited = null;
+  const scheduledEnv = {
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql,
+              values,
+              run: async () => {
+                statements.push({ sql, values });
+                return { success: true };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  await worker.scheduled({}, scheduledEnv, {
+    waitUntil(promise) { waited = promise; }
+  });
+  assert.ok(waited instanceof Promise);
+  await waited;
+  assert.equal(statements.length, 2);
+  const attempts = statements.find(item => item.sql.includes("DELETE FROM auth_attempts"));
+  const sessions = statements.find(item => item.sql.includes("DELETE FROM sessions"));
+  assert.ok(attempts);
+  assert.ok(sessions);
+  const now = Math.floor(Date.now() / 1000);
+  assert.ok(attempts.values[0] <= now - 86400);
+  assert.ok(sessions.values[0] <= now);
+});
+
 test("admin with a temporary password cannot access account management before changing it", async () => {
   const response = await worker.fetch(request("/api/admin/users", {
     headers: {Origin:origin,Authorization:"Bearer " + "o".repeat(64)}
