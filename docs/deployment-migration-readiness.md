@@ -33,7 +33,7 @@ At latest reviewed feature head `ef8a96f020d648839dff7ace42e960af7b29f821`:
 - [ ] Verify the real account can access the chosen folder and perform upload, read, and delete using a dedicated test folder/account. Mocked tests do not prove OAuth consent configuration, refresh-token durability, folder permissions, quota, or provider behavior.
 - [x] **Media visibility decision recorded by the owner in Issue #3:** everyone may view class posts/media, with or without an account. The current public `GET /api/content`, `GET /api/announcements`, and `GET /api/media/:id` routes match that decision; Drive objects remain private and are proxied through the Worker. This records the policy choice, not staging verification.
 - [ ] Member uploads are published immediately; there is no moderation queue. Confirm consent, removal procedures, and whether immediate publication is appropriate for the class.
-- [ ] **Resolve the advertised upload-size mismatch before launch.** The Worker currently permits 50 MiB media (51 MiB total multipart request), while `community.html` advertises 15 MB and `backend/README.md` describes a 15 MiB cap. Confirm the intended limit with the owner and align server enforcement, UI text, documentation, and boundary tests.
+- [x] **Upload-size policy and implementation aligned:** the owner approved 50 MiB per media upload (51 MiB maximum total multipart request including overhead). The Worker limit, browser-side validation, visible UI text, API documentation, and declared-length boundary test now use that limit. Exact-head CI must pass after the resumable-upload changes; real Drive/staging remains unverified.
 - [ ] **Choose and implement an aggregate per-member upload quota before public launch.** The per-file cap does not impose an aggregate quota: there is still no per-member total-byte, file-count, or upload-frequency limit. The owner must approve those values; enforce them atomically against D1 usage/metadata and test concurrent, over-limit, and cleanup-failure cases. Do not silently choose a quota.
 - [ ] Keep the cross-store failure path observable. If Drive upload succeeds but D1 insertion fails, the Worker attempts Drive deletion; failed cleanup requires orphan reconciliation. Deletion removes the Drive object before the D1 row so a Drive failure leaves retryable metadata. D1 and Drive are not transactional together; current failure-injection tests use mocks.
 
@@ -143,7 +143,8 @@ Before any approved migration:
 - [x] Health-route split regressions fixed and verified on exact head `db27007f501ffdaf86937243ef44b28d3dce02dc`; run [39295875991](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39295875991) passed 73/73 tests and all configured CI checks.
 - [x] Local D1 smoke script passed in CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369); real Google Drive remains unverified.
 - [ ] Verify real Google OAuth and Drive folder access using a dedicated test account/folder.
-- [ ] Resolve public-media visibility and class-photo consent/removal policy.
+- [x] Public-media visibility decision recorded: everyone can view class posts/media, with or without an account.
+- [ ] Confirm class-photo consent and removal-request policy before launch.
 - [ ] Select and implement an owner-approved aggregate upload quota.
 - [ ] Inventory the target D1, verify backup/restore, and review a migration matched to the observed schema.
 - [ ] Verify staging end-to-end with isolated D1 and Drive resources, exact CORS/API origin, Cron Trigger, and edge rate limits.
