@@ -59,6 +59,14 @@ The health endpoint checks D1 and access to the configured Google Drive folder, 
 
 ## Reproducible local demo
 
+**Fastest Windows demo:** from the repository root in PowerShell, run:
+
+```powershell
+npm run demo:local
+```
+
+This creates/uses only the isolated Wrangler local D1 configuration, preserves any existing Google values in `.dev.vars`, generates a local-only admin/setup secret on first run, initializes the admin, starts the Worker and static site on loopback, and opens `http://127.0.0.1:8000/community.html`. The saved demo credentials are kept in the Git-ignored `.local-demo-credentials.txt`; keep that file private. Press Ctrl+C in the PowerShell window to stop the servers. It does not deploy or contact a remote Cloudflare database. Login/account flows work without Google credentials; uploads remain unavailable until real local Drive OAuth credentials and a dedicated test folder are configured.
+
 Prerequisites: Node.js 22+, npm, and Wrangler 4. Start from a clean checkout of this feature branch.
 
 1. Copy `wrangler.local.example.toml` to `wrangler.local.toml`. The local D1 ID/name is deliberately separate from staging.
