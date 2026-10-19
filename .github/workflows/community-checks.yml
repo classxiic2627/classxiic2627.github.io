@@ -46,6 +46,35 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      - name: Ensure local credentials and filled configs are not tracked
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
+
+          tracked = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\\0")
+          forbidden = {
+              "wrangler.toml",
+              "wrangler.local.toml",
+              ".dev.vars",
+              ".local-demo-credentials.txt",
+              ".env",
+          }
+          leaked = sorted(
+              path for path in tracked
+              if path in forbidden or (path.startswith(".env.") and path != ".env.example")
+          )
+          if leaked:
+              raise SystemExit(f"Local secrets/configuration must not be tracked: {leaked}")
+
+          ignore = Path(".gitignore").read_text(encoding="utf-8").splitlines()
+          required = {"wrangler.toml", "wrangler.local.toml", ".dev.vars", ".env", ".env.*", "!.env.example", ".local-demo-credentials.txt"}
+          missing = sorted(required - set(ignore))
+          if missing:
+              raise SystemExit(f".gitignore is missing required local-secret patterns: {missing}")
+          print("Local credentials and filled configuration are not tracked; ignore rules are present.")
+          PY
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
