@@ -100,7 +100,7 @@ function authenticatedEnv(user) {
 
 const memberSession = {
   id: 7,
-  username: "class-members",
+  username: "alice.student",
   display_name: "Class Members",
   role: "member",
   disabled: 0,
@@ -530,7 +530,7 @@ test("records failed credential checks for login throttling", async () => {
   const statements = [];
   const user = {
     id: 9,
-    username: "class-members",
+    username: "alice.student",
     display_name: "Class Members",
     role: "member",
     password_hash: "AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
@@ -566,7 +566,7 @@ test("records failed credential checks for login throttling", async () => {
       "CF-Connecting-IP": "203.0.113.43",
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ username: "class-members", password: "definitely-not-the-password" })
+    body: JSON.stringify({ username: "alice.student", password: "definitely-not-the-password" })
   }), loginEnv);
   assert.equal(response.status, 401);
   assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO auth_attempts")));
@@ -1100,7 +1100,7 @@ test("successful member login creates a hashed, expiring session", async () => {
   const statements = [];
   const user = {
     id: 7,
-    username: "class-members",
+    username: "alice.student",
     display_name: "Class Members",
     role: "member",
     password_hash: "AAAAAAAAAAAAAAAAAAAAAA==$DGjF6pAtZCrqHycMaLV0VxSi/IV3kuF9nxysUBNVVvs=",
@@ -1137,7 +1137,7 @@ test("successful member login creates a hashed, expiring session", async () => {
       "CF-Connecting-IP": "203.0.113.54",
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ username: "class-members", password: "class-archive-test-passphrase" })
+    body: JSON.stringify({ username: "alice.student", password: "class-archive-test-passphrase" })
   }), loginEnv);
   assert.equal(response.status, 200);
   const data = await response.json();
