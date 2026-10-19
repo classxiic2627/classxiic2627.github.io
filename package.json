@@ -7,6 +7,6 @@
   },
   "scripts": {
     "check": "node --check community.js && node --check backend/worker.js && node --check sw.js",
-    "test": "node --test tests/community-worker.test.mjs"
+    "test": "node --test tests/*.test.mjs"
   }
 }
