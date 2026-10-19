@@ -29,18 +29,23 @@ test("service-worker notification clicks reject off-origin and malformed URLs", 
   const navigated = [];
   const focused = [];
   const archiveOrigin = "https://classxiic2627.github.io";
+  const lookalikeClient = {
+    url: archiveOrigin + ".attacker.example/community.html",
+    navigate: async url => { navigated.push({ client: "lookalike", url }); },
+    focus: async () => { focused.push("lookalike"); }
+  };
   const client = {
     url: archiveOrigin + "/community.html",
-    navigate: async url => { navigated.push(url); },
-    focus: async () => { focused.push(true); }
+    navigate: async url => { navigated.push({ client: "archive", url }); },
+    focus: async () => { focused.push("archive"); }
   };
   const self = {
     location: { origin: archiveOrigin },
     addEventListener: (name, handler) => handlers.set(name, handler)
   };
   const clients = {
-    matchAll: async () => [client],
-    openWindow: async url => { navigated.push(url); }
+    matchAll: async () => [lookalikeClient, client],
+    openWindow: async url => { navigated.push({ client: "new-window", url }); }
   };
   runInNewContext(readFileSync(new URL("../sw.js", import.meta.url), "utf8"), { self, clients, URL });
   let closedCount = 0;
@@ -53,8 +58,11 @@ test("service-worker notification clicks reject off-origin and malformed URLs", 
     await completion;
   }
   assert.equal(closedCount, 2);
-  assert.deepEqual(navigated, [archiveOrigin + "/", archiveOrigin + "/"]);
-  assert.deepEqual(focused, [true, true]);
+  assert.deepEqual(navigated, [
+    { client: "archive", url: archiveOrigin + "/" },
+    { client: "archive", url: archiveOrigin + "/" }
+  ]);
+  assert.deepEqual(focused, ["archive", "archive"]);
 });
 
 test("health endpoint returns a non-cacheable success response", async () => {
