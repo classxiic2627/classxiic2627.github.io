@@ -113,15 +113,28 @@ test("member upload sends validated bytes to Drive and stores only the Drive fil
   }));
 
   const response = await withFetch(async (url, options = {}) => {
-    if (String(url) === "https://oauth2.googleapis.com/token") return oauthResponse();
-    assert.match(String(url), /^https:\/\/www\.googleapis\.com\/upload\/drive\/v3\/files\?/);
+    const target = String(url);
+    if (target === "https://oauth2.googleapis.com/token") return oauthResponse();
     assert.equal(options.headers.Authorization, "Bearer unit-test-access-token");
-    assert.match(options.headers["Content-Type"], /^multipart\/related; boundary=/);
-    uploadedBody = new TextDecoder().decode(options.body);
+    if (target.startsWith("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=") && options.method === "POST") {
+      assert.equal(options.headers["Content-Type"], "application/json; charset=UTF-8");
+      assert.equal(options.headers["X-Upload-Content-Type"], "image/png");
+      assert.equal(options.headers["X-Upload-Content-Length"], "8");
+      const metadata = JSON.parse(String(options.body));
+      assert.equal(metadata.mimeType, "image/png");
+      assert.deepEqual(metadata.parents, ["folder_test-123"]);
+      uploadedBody = JSON.stringify(metadata);
+      return new Response(null, { status: 200, headers: { Location: "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=adapter-session" } });
+    }
+    assert.equal(target, "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=adapter-session");
+    assert.equal(options.method, "PUT");
+    assert.equal(options.headers["Content-Range"], "bytes 0-7/8");
+    assert.equal(new Uint8Array(options.body).length, 8);
     return new Response(JSON.stringify({
       id: "drive-file-abc123",
       name: "community-test",
       mimeType: "image/png",
+      size: 8,
       parents: ["folder_test-123"]
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }, () => worker.fetch(request("/api/content", {
@@ -163,9 +176,13 @@ test("Drive upload is compensated when the D1 metadata insert fails", async () =
   const response = await withFetch(async (url, options = {}) => {
     const target = String(url);
     if (target === "https://oauth2.googleapis.com/token") return oauthResponse();
-    if (target.startsWith("https://www.googleapis.com/upload/drive/v3/files?")) {
+    if (target.startsWith("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=") && options.method === "POST") {
+      calls.push("upload-start");
+      return new Response(null, { status: 200, headers: { Location: "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=cleanup-session" } });
+    }
+    if (target === "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=cleanup-session" && options.method === "PUT") {
       calls.push("upload");
-      return new Response(JSON.stringify({ id: "drive-orphan-1", mimeType: "image/png" }), {
+      return new Response(JSON.stringify({ id: "drive-orphan-1", mimeType: "image/png", size: 8 }), {
         status: 200, headers: { "Content-Type": "application/json" }
       });
     }
@@ -183,7 +200,7 @@ test("Drive upload is compensated when the D1 metadata insert fails", async () =
   }), env));
 
   assert.equal(response.status, 500);
-  assert.deepEqual(calls, ["upload", "delete"]);
+  assert.deepEqual(calls, ["upload-start", "upload", "delete"]);
   assert.doesNotMatch(await response.text(), /unit-test-access-token|fake-client-secret|fake-refresh-token/);
 });
 
