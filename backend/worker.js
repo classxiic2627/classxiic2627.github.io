@@ -331,10 +331,11 @@ export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin");
     if (request.method === "OPTIONS") {
-      if (origin && env.ALLOWED_ORIGIN && origin !== env.ALLOWED_ORIGIN) return new Response(null,{status:403});
-      return new Response(null,{status:204,headers:corsHeaders(env.ALLOWED_ORIGIN || origin || "*")});
+      if (origin && (!env.ALLOWED_ORIGIN || origin !== env.ALLOWED_ORIGIN)) return new Response(null,{status:403});
+      if (!origin) return new Response(null,{status:204});
+      return new Response(null,{status:204,headers:corsHeaders(env.ALLOWED_ORIGIN)});
     }
-    if (origin && env.ALLOWED_ORIGIN && origin !== env.ALLOWED_ORIGIN) return json({error:"Origin not allowed."},403);
+    if (origin && (!env.ALLOWED_ORIGIN || origin !== env.ALLOWED_ORIGIN)) return json({error:"Origin not allowed."},403);
     try { return await handle(request,env); }
     catch (error) {
       const status = Number(error.status) || 500;
