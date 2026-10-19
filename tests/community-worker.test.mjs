@@ -116,6 +116,62 @@ const adminSession = {
   display_name: "Archive Admin"
 };
 
+test("admin account list returns only member records with boolean status flags", async () => {
+  const accountEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {sql,values,first:async()=>adminSession};
+          },
+          all:async()=>({results:[{
+            id:42,username:"alice",email:"alice@example.test",displayName:"Alice",role:"member",
+            disabled:1,mustChangePassword:1,createdAt:"2026-10-19T00:00:00.000Z"
+          }]})
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/users", {
+    headers:{Origin:origin,Authorization:"Bearer " + "m".repeat(64)}
+  }),accountEnv);
+  assert.equal(response.status,200);
+  const data=await response.json();
+  assert.equal(data.items.length,1);
+  assert.equal(data.items[0].username,"alice");
+  assert.equal(data.items[0].disabled,true);
+  assert.equal(data.items[0].mustChangePassword,true);
+});
+
+test("invalid member email is rejected before inserting an account", async () => {
+  let inserted=false;
+  const accountEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first:async()=>adminSession,
+              run:async()=>{if(sql.includes("INSERT INTO users"))inserted=true;return {success:true,meta:{changes:1}};}
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/users", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer " + "n".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({username:"valid-user",email:"not-an-email",displayName:"Valid User",temporaryPassword:"a-valid-temporary-password"})
+  }),accountEnv);
+  assert.equal(response.status,400);
+  assert.deepEqual(await response.json(),{error:"Enter a valid email address."});
+  assert.equal(inserted,false);
+});
+
 test("admin can create an individual member account with normalized unique identity and temporary password", async () => {
   const calls = [];
   const accountEnv = {
