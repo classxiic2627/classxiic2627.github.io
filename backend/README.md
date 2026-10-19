@@ -53,7 +53,7 @@ The health endpoint checks both D1 and R2 and returns `503` if either is unavail
 
 ## One-time administrator setup
 
-After the Worker and its storage are configured in an approved environment, use a trusted CLI or administrative tool to send a single POST request to `/api/setup` with header `X-Setup-Secret: <your secret>` and a JSON body like. This endpoint is intentionally CLI-only: `X-Setup-Secret` is not in the browser CORS allowlist, and the secret must never be sent from frontend JavaScript or stored in page state.
+After the Worker and its storage are configured in an approved environment, use a trusted CLI or administrative tool to send a single POST request to `/api/setup` with header `X-Setup-Secret: <your secret>` and a JSON body like this: This endpoint is intentionally CLI-only: `X-Setup-Secret` is not in the browser CORS allowlist, and the secret must never be sent from frontend JavaScript or stored in page state.
 
 ```json
 {
