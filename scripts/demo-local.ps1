@@ -15,9 +15,13 @@ $credentialsPath = Join-Path $root ".local-demo-credentials.txt"
 if (Test-Path $credentialsPath) {
   $credentials = Get-Content $credentialsPath -Raw | ConvertFrom-Json
 } else {
-  $bytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  $bytes = New-Object byte[] 32
+  $rng.GetBytes($bytes)
   $secret = [Convert]::ToBase64String($bytes).TrimEnd("=").Replace("+","-").Replace("/","_")
-  $adminBytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes(24)
+  $adminBytes = New-Object byte[] 24
+  $rng.GetBytes($adminBytes)
+  $rng.Dispose()
   $adminPassword = "Local-" + [Convert]::ToBase64String($adminBytes).TrimEnd("=").Replace("+","-").Replace("/","_") + "!"
   $credentials = [pscustomobject]@{
     setupSecret = $secret
