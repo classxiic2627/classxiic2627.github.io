@@ -203,6 +203,7 @@ async function handle(request, env) {
     const user = await auth(request, env);
     const attemptKey = await rateLimitKey(request, env, "password-change:" + user.id);
     const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
     if (typeof body.currentPassword !== "string" || body.currentPassword.length > 256 || !validPassword(body.newPassword)) fail("Current password must be valid and the new password must be at least 12 characters.");
     const row = await env.DB.prepare("SELECT password_hash FROM users WHERE id=?").bind(user.id).first();
     const [salt, hash] = row.password_hash.split("$");
