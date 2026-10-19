@@ -569,3 +569,57 @@ test("one-time setup refuses to overwrite existing accounts", async () => {
   });
   assert.equal(batches, 0);
 });
+
+test("shared class members cannot change the shared password themselves", async () => {
+  const response = await worker.fetch(request("/api/account/password", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "h".repeat(64),
+      "Content-Type": "application/json"
+    }
+  }), authenticatedEnv(memberSession));
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), {
+    error: "The shared class upload password is managed by the administrator."
+  });
+});
+
+test("shared class members cannot use the admin password-rotation route", async () => {
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "i".repeat(64),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ newPassword: "a-long-test-password-value" })
+  }), authenticatedEnv(memberSession));
+  assert.equal(response.status, 403);
+  assert.deepEqual(await response.json(), {
+    error: "You do not have permission to do that."
+  });
+});
+
+test("admin member-password rotation enforces minimum password length", async () => {
+  const adminSession = {
+    ...memberSession,
+    id: 8,
+    username: "archive-admin",
+    role: "admin",
+    display_name: "Archive Admin"
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "j".repeat(64),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ newPassword: "short" })
+  }), authenticatedEnv(adminSession));
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: "The new class upload password must be at least 12 characters."
+  });
+});
