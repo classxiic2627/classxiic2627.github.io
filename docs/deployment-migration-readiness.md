@@ -28,11 +28,15 @@ At reviewed commit `409d8afed020e31f2387325ce3094c0807cdbd28` (the latest inspec
 
 ### CI evidence
 
-GitHub Actions run [39277637535](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39277637535) completed successfully for code/test commit `0e4c340bbd7f8e70cf8c3a1dc857a76475f70ea3`, with **61/61 automated tests passed**, frontend/Worker/service-worker syntax, DOM-reference checks, schema/initial-migration parity, atomic reservation SQL threshold checks, and Wrangler template/TOML checks. The current feature head `409d8afed020e31f2387325ce3094c0807cdbd28` adds only the README explanation of the layered throttle policy; its exact-head Actions run [39277905076](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39277905076) is queued and has not yet completed. This head includes streamed request-size enforcement, basic media-signature checks, R2/D1 compensation handling, CLI-only setup CORS, atomic auth-attempt reservations, and a service-worker notification-click guard that keeps navigation on the archive origin. The Node check script now syntax-checks `sw.js`, and regression tests verify malformed/external notification URLs fall back to the archive root and lookalike-host tabs are not selected as same-origin clients. Treat only the run attached to the exact release SHA as release evidence. Repository-level checks are not a live D1 or deployed Worker/R2 integration test.
+The latest verified green run is [39277637535](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39277637535), which passed **61/61 automated tests** on feature commit `0e4c340bbd7f8e70cf8c3a1dc857a76475f70ea3`. This run includes the cross-IP regression test confirming that 20 failed attempts for the same normalized account from 20 source IPs are still limited to 10 credential verifications.
+
+The latest inspected feature head is `409d8afed020e31f2387325ce3094c0807cdbd28`, which the latest repository update describes as a README-only throttle-policy clarification. Exact-head Actions runs [39277913558](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39277913558) and [39277905076](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39277905076) were still queued at the time of this refresh; **exact-head CI validation is pending**. Earlier failed runs on commit `4048b578` were caused by a stale login-throttle test fixture that omitted `username`; the newer `5e8dc240` head passed 60/60 after that fixture was corrected.
+
+The feature includes streamed request-size enforcement, basic media-signature checks, R2/D1 upload compensation handling, CLI-only setup CORS, atomic auth-attempt reservations, layered IP/account throttling, and service-worker notification-click origin validation. Repository-level tests are not a live D1 or deployed Worker/R2 integration test. They also do not verify a real Cloudflare edge-rate-limit rule.
 
 This is evidence of repository-level checks only. It is **not** proof of compatibility with the actual D1 database or a deployed Worker/R2 environment.
 
-PR #1 remains open and unmerged. The latest inspected feature head is `409d8afed020e31f2387325ce3094c0807cdbd28`; always retest the exact release commit. CI here validates repository-level checks only, not a real Cloudflare environment.
+PR #1 remains open and unmerged. Always retest the exact release commit; no live Cloudflare environment has been tested by this review.
 
 ## 2. D1 inventory required before migration design
 
