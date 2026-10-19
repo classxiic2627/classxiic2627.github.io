@@ -72,7 +72,7 @@ The smoke script prints each successful step. It verifies first-admin setup (or 
 **Terminal 3 — serve the existing website UI**:
 
 ```powershell
-python -m http.server 8000
+python -m http.server 8000 --bind 127.0.0.1
 ```
 
 Open [http://127.0.0.1:8000/community.html](http://127.0.0.1:8000/community.html). Sign in to the admin desk with the disposable demo-admin credentials above. Create a separate demo student from the admin desk, then test the student login and required temporary-password change. You can also publish an announcement and confirm it appears in the public list; both use the local D1 database. Stop the local Worker and static server with Ctrl+C when finished.
