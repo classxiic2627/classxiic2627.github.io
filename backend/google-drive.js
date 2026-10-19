@@ -169,21 +169,43 @@ export function createGoogleDriveMedia(env, fetchImpl = fetch) {
         providerError("Google Drive returned an invalid upload session URL.");
       }
 
-      const uploadResponse = await driveRequest(
-        env,
-        sessionUrl.href,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": mimeType,
-            "Content-Length": String(uploadSize),
-            "Content-Range": "bytes 0-" + (uploadSize - 1) + "/" + uploadSize
+      // Cloudflare ignores a manually supplied Content-Length for a generic
+      // ReadableStream and sends chunked encoding. Drive's single-request
+      // resumable upload expects a known length, so wrap streams in the runtime's
+      // FixedLengthStream when available. Node-based mocked tests keep the stream
+      // fallback; deployed Workers get the fixed-length transport.
+      let requestBody = uploadBody;
+      let streamCompletion = null;
+      let streamFailure = null;
+      if (requestBody instanceof ReadableStream && typeof FixedLengthStream === "function") {
+        const fixedLength = new FixedLengthStream(uploadSize);
+        streamCompletion = requestBody.pipeTo(fixedLength.writable).catch(error => {
+          streamFailure = error;
+        });
+        requestBody = fixedLength.readable;
+      }
+
+      let uploadResponse;
+      try {
+        uploadResponse = await driveRequest(
+          env,
+          sessionUrl.href,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": mimeType,
+              "Content-Length": String(uploadSize),
+              "Content-Range": "bytes 0-" + (uploadSize - 1) + "/" + uploadSize
+            },
+            body: requestBody
           },
-          body: uploadBody
-        },
-        fetchImpl,
-        [308]
-      );
+          fetchImpl,
+          [308]
+        );
+      } finally {
+        if (streamCompletion) await streamCompletion;
+      }
+      if (streamFailure) providerError("Google Drive upload stream failed.");
       if (uploadResponse.status === 308) {
         // A partial/incomplete session has no final file ID to commit to D1.
         // Fail closed rather than claiming the upload succeeded; the user can retry.
