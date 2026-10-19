@@ -114,8 +114,6 @@
       adminToken = data.token;
       adminMustChangePassword = !!data.mustChangePassword;
       $("adminSessionActions").hidden = false;
-      $("showAdminMemberPasswordChange").hidden = adminMustChangePassword;
-      $("adminMemberPasswordChange").hidden = true;
       $("adminLogin").hidden = true;
       $("adminPassword").value = "";
       $("adminPasswordChange").hidden = !adminMustChangePassword;
@@ -125,6 +123,7 @@
         status("adminStatus", "For account safety, change the temporary password before using the admin desk.");
       } else {
         await refreshAdmin();
+        await refreshAccounts();
         status("adminStatus", "Signed in as administrator.");
       }
     } catch (error) { status("adminStatus", error.message); }
@@ -182,8 +181,6 @@
       adminToken = "";
       adminMustChangePassword = false;
       $("adminSessionActions").hidden = true;
-      $("adminMemberPasswordChange").hidden = true;
-      $("adminMemberPasswordChange").reset();
       $("adminPasswordChange").reset();
       $("adminPasswordChange").hidden = true;
       $("adminArea").hidden = true;
@@ -191,33 +188,113 @@
       status("adminStatus", "Password changed. Please sign in again with your new password.");
     } catch (error) { status("adminStatus", error.message); }
   });
-  $("showAdminMemberPasswordChange").addEventListener("click", () => {
-    $("adminMemberPasswordChange").hidden = false;
-  });
-  $("cancelAdminMemberPasswordChange").addEventListener("click", () => {
-    $("adminMemberPasswordChange").reset();
-    $("adminMemberPasswordChange").hidden = true;
-  });
-  $("adminMemberPasswordChange").addEventListener("submit", async (event) => {
+  function resetAccountEditor() {
+    $("accountForm").reset();
+    $("accountId").value = "";
+    $("accountTempPasswordLabel").hidden = false;
+    $("accountTempPassword").required = true;
+    $("accountSaveButton").textContent = "Create student account";
+    $("accountCancelEdit").hidden = true;
+  }
+  async function refreshAccounts() {
+    const data = await api("/api/admin/users", {}, adminToken);
+    const list = $("accountList");
+    list.replaceChildren();
+    for (const account of data.items || []) {
+      const row = node("div", undefined, "admin-item");
+      const info = node("div");
+      const state = account.disabled ? "Disabled" : account.mustChangePassword ? "Needs password change" : "Active";
+      info.append(node("strong", account.displayName + " (@" + account.username + ")"),
+        node("p", account.email + " · " + state));
+      const actions = node("div", undefined, "community-actions");
+      const edit = node("button", "Edit details", "button button-ghost");
+      edit.type = "button";
+      edit.addEventListener("click", () => {
+        $("accountId").value = String(account.id);
+        $("accountUsername").value = account.username;
+        $("accountEmail").value = account.email;
+        $("accountDisplayName").value = account.displayName;
+        $("accountTempPassword").value = "";
+        $("accountTempPassword").required = false;
+        $("accountTempPasswordLabel").hidden = true;
+        $("accountSaveButton").textContent = "Save account details";
+        $("accountCancelEdit").hidden = false;
+      });
+      const toggle = node("button", account.disabled ? "Enable" : "Disable", "button button-ghost");
+      toggle.type = "button";
+      toggle.addEventListener("click", async () => {
+        if (!confirm((account.disabled ? "Re-enable " : "Disable ") + account.username + "?")) return;
+        try {
+          await api("/api/admin/users/" + account.id + "/status", {
+            method:"POST", body:JSON.stringify({disabled:!account.disabled})
+          }, adminToken);
+          await refreshAccounts();
+          status("adminStatus", account.disabled ? "Account enabled." : "Account disabled and sessions revoked.");
+        } catch (error) { status("adminStatus", error.message); }
+      });
+      const reset = node("button", "Reset password", "button button-ghost");
+      reset.type = "button";
+      reset.addEventListener("click", () => {
+        $("accountResetId").value = String(account.id);
+        $("accountResetLabel").textContent = "Set a new temporary password for @" + account.username + ". All existing sessions will be revoked.";
+        $("accountResetPassword").value = "";
+        $("accountResetForm").hidden = false;
+      });
+      const revoke = node("button", "Sign out everywhere", "button button-ghost");
+      revoke.type = "button";
+      revoke.addEventListener("click", async () => {
+        if (!confirm("Revoke every active session for " + account.username + "?")) return;
+        try {
+          await api("/api/admin/users/" + account.id + "/revoke-sessions", {method:"POST", body:"{}"}, adminToken);
+          status("adminStatus", "All sessions revoked for @" + account.username + ".");
+        } catch (error) { status("adminStatus", error.message); }
+      });
+      actions.append(edit, toggle, reset, revoke);
+      row.append(info, actions);
+      list.append(row);
+    }
+    if (!list.children.length) list.append(node("p", "No student accounts have been created yet."));
+  }
+  $("accountForm").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const newPassword = $("adminNewMemberPassword").value;
-    if (newPassword !== $("adminConfirmMemberPassword").value) {
-      status("adminStatus", "The new class upload password and confirmation do not match.");
+    const accountId = $("accountId").value;
+    const body = {
+      username:$("accountUsername").value.trim(),
+      email:$("accountEmail").value.trim(),
+      displayName:$("accountDisplayName").value.trim()
+    };
+    const temporaryPassword = $("accountTempPassword").value;
+    if (!accountId && temporaryPassword.length < 12) {
+      status("adminStatus", "Choose a temporary password with at least 12 characters.");
       return;
     }
-    if (newPassword.length < 12) {
-      status("adminStatus", "Choose a class upload password with at least 12 characters.");
-      return;
-    }
+    if (!accountId) body.temporaryPassword = temporaryPassword;
     try {
-      const data = await api("/api/admin/member-password", {
-        method:"POST",
-        body:JSON.stringify({newPassword})
+      await api(accountId ? "/api/admin/users/" + accountId + "/update" : "/api/admin/users", {
+        method:"POST", body:JSON.stringify(body)
       }, adminToken);
-      $("adminMemberPasswordChange").reset();
-      $("adminMemberPasswordChange").hidden = true;
-      status("adminStatus", data.message || "Class upload password rotated.");
+      resetAccountEditor();
+      await refreshAccounts();
+      status("adminStatus", accountId ? "Student account details updated." : "Student account created. Share its temporary password privately.");
     } catch (error) { status("adminStatus", error.message); }
+  });
+  $("accountCancelEdit").addEventListener("click", resetAccountEditor);
+  $("accountResetForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const accountId = $("accountResetId").value;
+    try {
+      const data = await api("/api/admin/users/" + accountId + "/reset-password", {
+        method:"POST", body:JSON.stringify({temporaryPassword:$("accountResetPassword").value})
+      }, adminToken);
+      $("accountResetForm").reset();
+      $("accountResetForm").hidden = true;
+      await refreshAccounts();
+      status("adminStatus", data.message || "Temporary password reset.");
+    } catch (error) { status("adminStatus", error.message); }
+  });
+  $("accountCancelReset").addEventListener("click", () => {
+    $("accountResetForm").reset();
+    $("accountResetForm").hidden = true;
   });
   $("announcementForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -237,8 +314,6 @@
     $("adminSessionActions").hidden = true;
     $("adminPasswordChange").hidden = true;
     $("adminPasswordChange").reset();
-    $("adminMemberPasswordChange").hidden = true;
-    $("adminMemberPasswordChange").reset();
     $("adminArea").hidden = true;
     $("adminLogin").hidden = false;
     status("adminStatus", "Signed out.");
