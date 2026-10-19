@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   const configuredApiBase = (document.querySelector('meta[name="community-api-base"]')?.content || "").trim().replace(/\/+$/, "");
-  const localHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+  const localHosts = new Set(["127.0.0.1"]);
   // Development-only default: the published site host never matches this list,
   // so the public frontend stays disconnected until an approved Worker origin is configured.
   const API_BASE = configuredApiBase || (
