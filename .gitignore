@@ -1,5 +1,6 @@
 # Local Worker configuration: never commit real database IDs or bucket names.
 wrangler.toml
+wrangler.local.toml
 .dev.vars
 .env
 .env.*
