@@ -181,6 +181,8 @@
       adminToken = "";
       adminMustChangePassword = false;
       $("adminSessionActions").hidden = true;
+      $("adminMemberPasswordChange").hidden = true;
+      $("adminMemberPasswordChange").reset();
       $("adminPasswordChange").reset();
       $("adminPasswordChange").hidden = true;
       $("adminArea").hidden = true;
