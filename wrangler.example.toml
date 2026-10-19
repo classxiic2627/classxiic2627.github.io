@@ -1,0 +1,21 @@
+# Safe configuration template for a NEW, isolated staging environment.
+# Copy to wrangler.toml locally, replace every placeholder with reviewed staging
+# resource IDs/names, and keep the filled file out of Git. Do not point this at
+# production or run migrations until the real database has been inventoried.
+name = "class-xii-c-community-hub-api-staging"
+main = "backend/worker.js"
+compatibility_date = "2026-10-19"
+
+[triggers]
+# Required for the Worker's scheduled() cleanup handler. Verify this trigger in staging.
+crons = ["17 3 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "community-hub-staging"
+database_id = "REPLACE_WITH_VERIFIED_STAGING_D1_DATABASE_ID"
+migrations_dir = "backend/migrations"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "REPLACE_WITH_APPROVED_STAGING_R2_BUCKET"
