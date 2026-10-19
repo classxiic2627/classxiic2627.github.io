@@ -1200,7 +1200,7 @@ test("rejects oversized JSON bodies when Content-Length is absent", async () => 
   assert.equal(req.headers.get("content-length"), null);
   const response = await worker.fetch(req, env);
   assert.equal(response.status, 413);
-  assert.deepEqual(await response.json(), { error: "Internal server error." });
+  assert.deepEqual(await response.json(), { error: "Request body is too large." });
 });
 
 test("rejects oversized multipart bodies when Content-Length is absent before parsing", async () => {
@@ -1217,7 +1217,7 @@ test("rejects oversized multipart bodies when Content-Length is absent before pa
   assert.equal(req.headers.get("content-length"), null);
   const response = await worker.fetch(req, authenticatedEnv(memberSession));
   assert.equal(response.status, 413);
-  assert.deepEqual(await response.json(), { error: "Internal server error." });
+  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 15 MB media limit." });
 });
 
 test("rejects malformed multipart upload bodies as client errors", async () => {
