@@ -723,3 +723,41 @@ test("rejects oversized setup secrets and records the failed attempt", async () 
   assert.deepEqual(await response.json(), { error: "Not authorized." });
   assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO auth_attempts")));
 });
+
+test("unknown usernames receive the same login error and count toward throttling", async () => {
+  const statements = [];
+  const loginEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first: async () => {
+                if (sql.includes("FROM auth_attempts")) return { n: 0 };
+                if (sql.includes("FROM users")) return null;
+                return null;
+              },
+              run: async () => {
+                statements.push({ sql, values });
+                return { success: true };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/login", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.53",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ username: "unknown-admin", password: "some-guess" })
+  }), loginEnv);
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: "Invalid username or password." });
+  assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO auth_attempts")));
+});
