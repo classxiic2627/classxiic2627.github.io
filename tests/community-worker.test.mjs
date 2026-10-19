@@ -316,3 +316,46 @@ test("rejects disallowed upload MIME types before writing to media storage", asy
   });
   assert.equal(mediaWrites, 0);
 });
+
+test("rejects null setup payloads without creating accounts", async () => {
+  const statements = [];
+  const setupEnv = {
+    ...env,
+    SETUP_SECRET: "a-long-random-setup-secret-for-testing",
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first: async () => {
+                if (sql.includes("FROM auth_attempts")) return { n: 0 };
+                if (sql.includes("COUNT(*) AS n FROM users")) return { n: 0 };
+                return null;
+              },
+              run: async () => {
+                statements.push({ sql, values });
+                return { success: true };
+              }
+            };
+          }
+        };
+      },
+      async batch() {
+        throw new Error("Account batch must not run for invalid input");
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/setup", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.46",
+      "Content-Type": "application/json",
+      "X-Setup-Secret": "a-long-random-setup-secret-for-testing"
+    },
+    body: "null"
+  }), setupEnv);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "Invalid request body." });
+  assert.equal(statements.some(({ sql }) => sql.includes("INSERT INTO users")), false);
+});
