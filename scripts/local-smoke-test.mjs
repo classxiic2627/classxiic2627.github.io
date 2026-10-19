@@ -26,6 +26,7 @@ if (adminPassword.length < 12) throw new Error("LOCAL_ADMIN_PASSWORD must be at 
 
 async function api(path, { method = "GET", token, body, headers = {} } = {}) {
   const requestHeaders = new Headers(headers);
+  requestHeaders.set("Origin", "http://127.0.0.1:8000");
   if (token) requestHeaders.set("Authorization", "Bearer " + token);
   if (body !== undefined) requestHeaders.set("Content-Type", "application/json");
   const response = await fetch(new URL(path, base), {
