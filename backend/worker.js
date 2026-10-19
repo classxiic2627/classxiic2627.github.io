@@ -76,6 +76,22 @@ function cleanText(value, max, field, required = false) {
   return text;
 }
 function id() { return crypto.randomUUID(); }
+function normalizeUsername(value) {
+  const username = cleanText(value, 64, "Username", true).toLowerCase();
+  if (!/^[a-z0-9._-]{3,64}$/.test(username)) fail("Username must be 3–64 letters, numbers, dots, underscores or hyphens.");
+  return username;
+}
+function normalizeEmail(value) {
+  const email = cleanText(value, 254, "Email", true).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail("Enter a valid email address.");
+  return email;
+}
+function accountIdFromPath(path, suffix) {
+  const match = path.match(new RegExp("^/api/admin/users/([0-9]+)/" + suffix + "$"));
+  if (!match) return null;
+  const accountId = Number(match[1]);
+  return Number.isSafeInteger(accountId) && accountId > 0 ? accountId : null;
+}
 async function readJson(request) {
   const length = Number(request.headers.get("content-length") || 0);
   if (length > 1024 * 1024) fail("Request body is too large.", 413);
@@ -95,6 +111,10 @@ async function auth(request, env, requiredRole = null) {
     fail("Session expired. Please sign in again.", 401);
   }
   if (requiredRole && row.role !== requiredRole) fail("You do not have permission to do that.", 403);
+  const path = new URL(request.url).pathname;
+  if (row.must_change_password && path !== "/api/logout" && path !== "/api/account/password") {
+    fail("Change your temporary password before continuing.", 403);
+  }
   return row;
 }
 async function issueSession(user, env) {
@@ -128,7 +148,7 @@ async function login(request, env, role) {
   const attemptKey = await rateLimitKey(request, env, "login:" + role);
   const body = await readJson(request);
   if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
-  const username = role === "admin" ? cleanText(body.username, 64, "Username", true) : "class-members";
+  const username = cleanText(body.username, 64, "Username", true).toLowerCase();
   const password = body.password;
   if (typeof password !== "string" || password.length > 256) fail("Invalid username or password.", 401);
   const user = await env.DB.prepare(
@@ -176,23 +196,15 @@ async function handle(request, env) {
     if (count.n > 0) fail("Setup has already been completed. Rotate the setup secret and remove it when finished.", 409);
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
-    const adminUsername = cleanText(body.adminUsername, 64, "Admin username", true);
+    const adminUsername = normalizeUsername(body.adminUsername);
+    const adminEmail = normalizeEmail(body.adminEmail);
     const adminPassword = body.adminPassword;
-    const memberPassword = body.memberPassword;
-    if (!/^[a-zA-Z0-9._-]{3,64}$/.test(adminUsername)) fail("Admin username must be 3–64 letters, numbers, dots, underscores or hyphens.");
-    if (adminUsername.toLowerCase() === "class-members") fail("Choose a different admin username; that username is reserved for the class member account.");
-    if (!validPassword(adminPassword) || !validPassword(memberPassword)) fail("Both passwords must be at least 12 non-blank characters.");
-    if (adminPassword === memberPassword) fail("Admin and member passwords must be different.");
+    if (!validPassword(adminPassword)) fail("Admin password must be at least 12 non-blank characters.");
     const adminHash = await passwordHash(adminPassword);
-    const memberHash = await passwordHash(memberPassword);
-    // D1 batch executes atomically, preventing a partial setup if one insert fails.
-    await env.DB.batch([
-      env.DB.prepare("INSERT INTO users(username,display_name,role,password_hash,must_change_password) VALUES(?,?,?,?,0)")
-        .bind(adminUsername, "Class Archive Admin", "admin", adminHash.salt + "$" + adminHash.hash),
-      env.DB.prepare("INSERT INTO users(username,display_name,role,password_hash,must_change_password) VALUES(?,?,?,?,0)")
-        .bind("class-members", "Class Members", "member", memberHash.salt + "$" + memberHash.hash)
-    ]);
-    return json({ok:true, message:"Accounts initialized. Store both passwords safely and rotate/remove SETUP_SECRET."}, 201, env.ALLOWED_ORIGIN);
+    // One-time setup creates only the first administrator. Student accounts are provisioned individually.
+    await env.DB.prepare("INSERT INTO users(username,email,display_name,role,password_hash,must_change_password) VALUES(?,?,?,?,?,0)")
+      .bind(adminUsername, adminEmail, cleanText(body.adminDisplayName || "Class Archive Admin", 100, "Admin display name", true), "admin", adminHash.salt + "$" + adminHash.hash).run();
+    return json({ok:true, message:"Administrator initialized. Create student accounts from the admin desk and rotate/remove SETUP_SECRET."}, 201, env.ALLOWED_ORIGIN);
   }
   if (request.method === "POST" && path === "/api/member/login") return login(request, env, "member");
   if (request.method === "POST" && path === "/api/admin/login") return login(request, env, "admin");
@@ -205,7 +217,6 @@ async function handle(request, env) {
   }
   if (request.method === "POST" && path === "/api/account/password") {
     const user = await auth(request, env);
-    if (user.role !== "admin") fail("The shared class upload password is managed by the administrator.", 403);
     const attemptKey = await rateLimitKey(request, env, "password-change:" + user.id);
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
@@ -223,7 +234,7 @@ async function handle(request, env) {
         .bind(h.salt + "$" + h.hash, user.id),
       env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id)
     ]);
-    return json({ok:true, message:"Password changed. Please sign in again."}, 200, env.ALLOWED_ORIGIN);
+    return json({ok:true, message:"Password changed. All sessions were revoked; please sign in again."}, 200, env.ALLOWED_ORIGIN);
   }
 
   if (request.method === "POST" && path === "/api/admin/member-password") {
@@ -243,6 +254,92 @@ async function handle(request, env) {
       env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(member.id)
     ]);
     return json({ok:true, message:"Class upload password rotated. Share it with members through a trusted class channel."}, 200, env.ALLOWED_ORIGIN);
+  }
+
+  if (request.method === "GET" && path === "/api/admin/users") {
+    const admin = await auth(request, env, "admin");
+    await requireChangedPassword(admin);
+    const rows = await env.DB.prepare(
+      "SELECT id,username,email,display_name AS displayName,role,disabled,must_change_password AS mustChangePassword,created_at AS createdAt " +
+      "FROM users WHERE role='member' ORDER BY username COLLATE NOCASE LIMIT 500"
+    ).all();
+    return json({items:(rows.results || []).map(row=>({...row,disabled:!!row.disabled,mustChangePassword:!!row.mustChangePassword}))}, 200, env.ALLOWED_ORIGIN);
+  }
+  if (request.method === "POST" && path === "/api/admin/users") {
+    const admin = await auth(request, env, "admin");
+    await requireChangedPassword(admin);
+    const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
+    const username = normalizeUsername(body.username);
+    const email = normalizeEmail(body.email);
+    const displayName = cleanText(body.displayName, 100, "Display name", true);
+    if (!validPassword(body.temporaryPassword)) fail("Temporary password must be at least 12 non-blank characters.");
+    const password = await passwordHash(body.temporaryPassword);
+    try {
+      const result = await env.DB.prepare(
+        "INSERT INTO users(username,email,display_name,role,password_hash,must_change_password,disabled) VALUES(?,?,?,'member',?,1,0)"
+      ).bind(username,email,displayName,password.salt+"$"+password.hash).run();
+      return json({ok:true,id:result.meta?.last_row_id ?? null,message:"Student account created. Share the temporary password privately; it will not be shown again."},201,env.ALLOWED_ORIGIN);
+    } catch (error) {
+      if (/unique|constraint/i.test(String(error?.message || error))) fail("That username or email is already in use.",409);
+      throw error;
+    }
+  }
+  const updateId = accountIdFromPath(path, "update");
+  if (request.method === "POST" && updateId !== null) {
+    const admin = await auth(request, env, "admin");
+    await requireChangedPassword(admin);
+    const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
+    const username = normalizeUsername(body.username);
+    const email = normalizeEmail(body.email);
+    const displayName = cleanText(body.displayName, 100, "Display name", true);
+    try {
+      const result = await env.DB.prepare(
+        "UPDATE users SET username=?,email=?,display_name=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND role='member'"
+      ).bind(username,email,displayName,updateId).run();
+      if (!result.meta?.changes) fail("Student account not found.",404);
+      return json({ok:true},200,env.ALLOWED_ORIGIN);
+    } catch (error) {
+      if (/unique|constraint/i.test(String(error?.message || error))) fail("That username or email is already in use.",409);
+      throw error;
+    }
+  }
+  const statusId = accountIdFromPath(path, "status");
+  if (request.method === "POST" && statusId !== null) {
+    const admin = await auth(request, env, "admin");
+    await requireChangedPassword(admin);
+    const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.disabled !== "boolean") fail("Provide disabled as true or false.");
+    const result = await env.DB.prepare(
+      "UPDATE users SET disabled=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND role='member'"
+    ).bind(body.disabled ? 1 : 0,statusId).run();
+    if (!result.meta?.changes) fail("Student account not found.",404);
+    if (body.disabled) await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(statusId).run();
+    return json({ok:true,message:body.disabled?"Account disabled and sessions revoked.":"Account re-enabled."},200,env.ALLOWED_ORIGIN);
+  }
+  const resetId = accountIdFromPath(path, "reset-password");
+  if (request.method === "POST" && resetId !== null) {
+    const admin = await auth(request, env, "admin");
+    await requireChangedPassword(admin);
+    const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body) || !validPassword(body.temporaryPassword)) fail("Temporary password must be at least 12 non-blank characters.");
+    const password = await passwordHash(body.temporaryPassword);
+    const result = await env.DB.prepare(
+      "UPDATE users SET password_hash=?,must_change_password=1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND role='member'"
+    ).bind(password.salt+"$"+password.hash,resetId).run();
+    if (!result.meta?.changes) fail("Student account not found.",404);
+    await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(resetId).run();
+    return json({ok:true,message:"Temporary password reset and all sessions revoked. Share it privately."},200,env.ALLOWED_ORIGIN);
+  }
+  const revokeId = accountIdFromPath(path, "revoke-sessions");
+  if (request.method === "POST" && revokeId !== null) {
+    const admin = await auth(request, env, "admin");
+    await requireChangedPassword(admin);
+    const target = await env.DB.prepare("SELECT id FROM users WHERE id=? AND role='member'").bind(revokeId).first();
+    if (!target) fail("Student account not found.",404);
+    await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(revokeId).run();
+    return json({ok:true,message:"All sessions revoked."},200,env.ALLOWED_ORIGIN);
   }
 
   if (request.method === "GET" && path === "/api/content") {
