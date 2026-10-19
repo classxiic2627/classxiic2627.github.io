@@ -1,0 +1,5 @@
+# Local Cloudflare configuration and secrets
+wrangler.toml
+.dev.vars
+.wrangler/
+node_modules/
