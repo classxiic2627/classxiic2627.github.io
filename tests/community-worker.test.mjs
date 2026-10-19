@@ -158,6 +158,70 @@ test("admin can create an individual member account with normalized unique ident
   assert.match(insert.sql,/must_change_password,disabled/);
 });
 
+test("duplicate normalized member identity is rejected without exposing a database error", async () => {
+  const accountEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql, values,
+              first: async () => adminSession,
+              run: async () => {
+                if (sql.includes("INSERT INTO users")) throw new Error("UNIQUE constraint failed: users.email");
+                return {success:true,meta:{changes:1}};
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/users", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer " + "x".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({
+      username:"ALICE.STUDENT",email:"ALICE@EXAMPLE.TEST",displayName:"Alice",
+      temporaryPassword:"another-unique-temporary-password"
+    })
+  }),accountEnv);
+  assert.equal(response.status,409);
+  assert.deepEqual(await response.json(),{error:"That username or email is already in use."});
+});
+
+test("resetting a member password atomically revokes only that member's sessions", async () => {
+  let statements = [];
+  const accountEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {sql,values,first:async()=>adminSession,run:async()=>({success:true,meta:{changes:1}})};
+          }
+        };
+      },
+      async batch(items) {
+        statements = items;
+        return [{success:true,meta:{changes:1}},{success:true,meta:{changes:1}}];
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/users/42/reset-password", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer " + "y".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({temporaryPassword:"reset-to-a-new-temporary-password"})
+  }),accountEnv);
+  assert.equal(response.status,200);
+  assert.equal(statements.length,2);
+  assert.match(statements[0].sql,/UPDATE users SET password_hash=.*must_change_password=1/);
+  assert.match(statements[1].sql,/DELETE FROM sessions WHERE user_id=.*EXISTS \(SELECT 1 FROM users WHERE id=.*role='member'/);
+  assert.deepEqual(statements[1].values,[42,42]);
+});
+
 test("member accounts cannot access the admin account-management API", async () => {
   const response = await worker.fetch(request("/api/admin/users", {
     headers:{Origin:origin,Authorization:"Bearer " + "v".repeat(64)}
