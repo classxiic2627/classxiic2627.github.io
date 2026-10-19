@@ -90,6 +90,10 @@ try {
 
   $static = Start-Process -FilePath "python" -ArgumentList @("-m","http.server","8000","--bind","127.0.0.1") -WorkingDirectory $root -PassThru -WindowStyle Hidden -RedirectStandardOutput $staticLog -RedirectStandardError $staticErrorLog
   Start-Sleep -Seconds 1
+  if ($static.HasExited) {
+    if (Test-Path $staticErrorLog) { Get-Content $staticErrorLog -Tail 20 }
+    throw "Static server failed to start. Check whether port 8000 is already in use."
+  }
   Write-Host ""
   Write-Host "LOCAL DEMO IS RUNNING — no Cloudflare account or Google credentials are used for login."
   Write-Host "Open: http://127.0.0.1:8000/community.html"
@@ -102,5 +106,7 @@ try {
   while (-not $worker.HasExited -and -not $static.HasExited) { Start-Sleep -Seconds 2 }
 } finally {
   if ($static -and -not $static.HasExited) { Stop-Process -Id $static.Id -Force -ErrorAction SilentlyContinue }
-  if ($worker -and -not $worker.HasExited) { Stop-Process -Id $worker.Id -Force -ErrorAction SilentlyContinue }
+  if ($worker -and -not $worker.HasExited) {
+    & taskkill.exe /PID $worker.Id /T /F 2>$null | Out-Null
+  }
 }
