@@ -184,3 +184,49 @@ test("scheduled cleanup prunes old auth attempts and expired sessions", async ()
   assert.ok(statements.some(sql => sql.includes("DELETE FROM auth_attempts")));
   assert.ok(statements.some(sql => sql.includes("DELETE FROM sessions")));
 });
+
+test("records failed credential checks for login throttling", async () => {
+  const statements = [];
+  const user = {
+    id: 9,
+    username: "class-members",
+    display_name: "Class Members",
+    role: "member",
+    password_hash: "AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    disabled: 0,
+    must_change_password: 0
+  };
+  const loginEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first: async () => sql.includes("COUNT(*)")
+                ? { n: 0 }
+                : sql.includes("FROM users")
+                  ? user
+                  : null,
+              run: async () => {
+                statements.push({ sql, values });
+                return { success: true };
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/member/login", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.43",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ password: "definitely-not-the-password" })
+  }), loginEnv);
+  assert.equal(response.status, 401);
+  assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO auth_attempts")));
+});
