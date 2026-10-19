@@ -74,6 +74,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import sqlite3
+          import tomllib
           from pathlib import Path
 
           connection = sqlite3.connect(":memory:")
@@ -152,5 +153,13 @@ jobs:
           missing_config = [value for value in required_config if value not in wrangler_template]
           if missing_config:
               raise SystemExit(f"Wrangler staging template is missing required safety/config entries: {missing_config}")
-          print("Wrangler staging template contains required placeholders and scheduled-cleanup declaration.")
+
+          parsed_config = tomllib.loads(wrangler_template)
+          if parsed_config["vars"].get("ALLOWED_ORIGIN") != "https://REPLACE_WITH_APPROVED_STAGING_ORIGIN":
+              raise SystemExit("Wrangler ALLOWED_ORIGIN placeholder is not the expected staging-only value.")
+          if parsed_config["triggers"].get("crons") != ["17 3 * * *"]:
+              raise SystemExit("Wrangler staging template must declare the expected daily Cron Trigger.")
+          if parsed_config["d1_databases"][0].get("migrations_dir") != "backend/migrations":
+              raise SystemExit("Wrangler D1 migration directory does not match the repository.")
+          print("Wrangler TOML parses and contains required staging placeholders and scheduled-cleanup declaration.")
           PY
