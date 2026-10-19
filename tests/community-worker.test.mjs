@@ -324,14 +324,16 @@ test("rejects null setup payloads without creating accounts", async () => {
     SETUP_SECRET: "a-long-random-setup-secret-for-testing",
     DB: {
       prepare(sql) {
+        const first = async () => {
+          if (sql.includes("FROM auth_attempts")) return { n: 0 };
+          if (sql.includes("COUNT(*) AS n FROM users")) return { n: 0 };
+          return null;
+        };
         return {
+          first,
           bind(...values) {
             return {
-              first: async () => {
-                if (sql.includes("FROM auth_attempts")) return { n: 0 };
-                if (sql.includes("COUNT(*) AS n FROM users")) return { n: 0 };
-                return null;
-              },
+              first,
               run: async () => {
                 statements.push({ sql, values });
                 return { success: true };
