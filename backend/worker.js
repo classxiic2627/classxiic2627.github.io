@@ -299,7 +299,9 @@ async function handle(request, env) {
       "UPDATE users SET disabled=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND role='member'"
     ).bind(body.disabled ? 1 : 0,statusId);
     const statements = [update];
-    if (body.disabled) statements.push(env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(statusId));
+    if (body.disabled) statements.push(env.DB.prepare(
+      "DELETE FROM sessions WHERE user_id=? AND EXISTS (SELECT 1 FROM users WHERE id=? AND role='member' AND disabled=1)"
+    ).bind(statusId,statusId));
     const results = await env.DB.batch(statements);
     if (!Number(results?.[0]?.meta?.changes || 0)) fail("Student account not found.",404);
     return json({ok:true,message:body.disabled?"Account disabled and sessions revoked.":"Account re-enabled."},200,env.ALLOWED_ORIGIN);
@@ -314,7 +316,9 @@ async function handle(request, env) {
     const results = await env.DB.batch([
       env.DB.prepare("UPDATE users SET password_hash=?,must_change_password=1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND role='member'")
         .bind(password.salt+"$"+password.hash,resetId),
-      env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(resetId)
+      env.DB.prepare(
+        "DELETE FROM sessions WHERE user_id=? AND EXISTS (SELECT 1 FROM users WHERE id=? AND role='member')"
+      ).bind(resetId,resetId)
     ]);
     if (!Number(results?.[0]?.meta?.changes || 0)) fail("Student account not found.",404);
     return json({ok:true,message:"Temporary password reset and all sessions revoked. Share it privately."},200,env.ALLOWED_ORIGIN);
