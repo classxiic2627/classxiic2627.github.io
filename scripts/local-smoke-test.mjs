@@ -113,7 +113,8 @@ async function main() {
     method: "POST",
     body: { username, password: permanentPassword }
   });
-  assert(relogin.response.status === 200 && relogin.data.mustChangePassword === false,
+  assert(relogin.response.status === 200 && relogin.data.mustChangePassword === false &&
+    typeof relogin.data.token === "string",
     "Student could not sign in with the new password.");
   console.log("PASS: student can sign in with the new password.");
 
