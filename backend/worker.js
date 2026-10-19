@@ -213,6 +213,9 @@ async function clearAuthReservation(env, attempt) {
     .bind(attempt.id, attempt.keyHash).run();
 }
 async function login(request, env, role) {
+  // Reserve the IP-wide slot before parsing so malformed payloads also count
+  // toward the generous IP ceiling.
+  const ipAttempt = await reserveAuthAttempt(request, env, "login-ip:" + role, 100);
   const body = await readJson(request);
   if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
   const username = cleanText(body.username, 64, "Username", true).toLowerCase();
@@ -223,7 +226,6 @@ async function login(request, env, role) {
   // school/NAT IP can serve many students, so a few mistakes by one student
   // must not lock every member out. The account bucket is keyed by a digest of
   // the normalized username and applies across IPs to slow distributed guesses.
-  const ipAttempt = await reserveAuthAttempt(request, env, "login-ip:" + role, 100);
   let accountAttempt;
   try {
     accountAttempt = await reserveAuthAttempt(request, env, "login-account:" + role, AUTH_MAX_ATTEMPTS, username);
