@@ -41,10 +41,11 @@ async function accessToken(env, fetchImpl = fetch) {
   }
   const key = clientId + ":" + await fingerprint(clientSecret + ":" + refreshToken);
   const now = Math.floor(Date.now() / 1000);
-  if (tokenCache.key === key && tokenCache.token && tokenCache.expiresAt > now + 60) {
-    return tokenCache.token;
+  if (tokenCache.key !== key) {
+    tokenCache = { key, token: "", expiresAt: 0, promise: null };
   }
-  if (tokenCache.key === key && tokenCache.promise) return tokenCache.promise;
+  if (tokenCache.token && tokenCache.expiresAt > now + 60) return tokenCache.token;
+  if (tokenCache.promise) return tokenCache.promise;
 
   tokenCache.key = key;
   tokenCache.promise = (async () => {
