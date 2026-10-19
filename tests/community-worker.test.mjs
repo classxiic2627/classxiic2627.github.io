@@ -32,7 +32,8 @@ function makeGoogleFetch(overrides = {}) {
     if (url.pathname === "/upload/drive/v3/files" && method === "PUT" && url.searchParams.has("upload_id")) {
       const pending = pendingUploads.get(url.searchParams.get("upload_id"));
       if (!pending) return new Response("Unknown upload session",{status:404});
-      const size = Number(init.headers?.["Content-Length"] || init.body?.byteLength || 1);
+      const uploaded = await new Response(init.body).arrayBuffer();
+      const size = Number(init.headers?.["Content-Length"] || uploaded.byteLength);
       return Response.json({id:pending.id,name:pending.metadata.name,mimeType:pending.metadata.mimeType,size,parents:pending.metadata.parents});
     }
     if (url.pathname.startsWith("/drive/v3/files/") && url.searchParams.get("alt") === "media" && method === "GET") {
