@@ -720,6 +720,43 @@ test("one-time setup refuses to overwrite existing accounts", async () => {
   assert.equal(batches, 0);
 });
 
+test("first-admin setup uses a single conditional insert and requires an email", async () => {
+  const statements = [];
+  const setupEnv = {
+    ...env,
+    SETUP_SECRET:"setup-secret-for-this-test-only",
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql, values,
+              first:async()=> sql.includes("FROM auth_attempts") ? {n:0} : null,
+              run:async()=>{
+                statements.push({sql,values});
+                return {success:true,meta:{changes:1}};
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/setup", {
+    method:"POST",
+    headers:{Origin:origin,"CF-Connecting-IP":"203.0.113.59","Content-Type":"application/json","X-Setup-Secret":"setup-secret-for-this-test-only"},
+    body:JSON.stringify({adminUsername:"Archive.Admin",adminEmail:"ADMIN@EXAMPLE.TEST",adminPassword:"a-unique-initial-admin-password"})
+  }),setupEnv);
+  assert.equal(response.status,201);
+  const insert = statements.find(statement=>statement.sql.includes("INSERT INTO users"));
+  assert.ok(insert);
+  assert.match(insert.sql,/WHERE NOT EXISTS \(SELECT 1 FROM users\)/);
+  assert.equal(insert.values[0],"archive.admin");
+  assert.equal(insert.values[1],"admin@example.test");
+  assert.equal(insert.values[3],"admin");
+});
+
 test("legacy shared-password rotation endpoint is removed", async () => {
   const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
     method: "POST",
