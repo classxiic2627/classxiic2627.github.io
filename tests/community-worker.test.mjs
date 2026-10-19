@@ -5,15 +5,51 @@ import { runInNewContext } from "node:vm";
 import worker from "../backend/worker.js";
 
 const origin = "https://classxiic2627.github.io";
+const driveFolderId = "drive-folder-test";
+function makeGoogleFetch(overrides = {}) {
+  let uploadCount = 0;
+  return async (input, init = {}) => {
+    const url = new URL(typeof input === "string" ? input : input.url);
+    const method = init.method || "GET";
+    if (url.href === "https://oauth2.googleapis.com/token") {
+      return Response.json({access_token:"test-drive-access-token",expires_in:3600});
+    }
+    if (url.pathname === "/drive/v3/files/" + driveFolderId && method === "GET") {
+      return Response.json({id:driveFolderId,name:"Test uploads",mimeType:"application/vnd.google-apps.folder"});
+    }
+    if (url.pathname === "/upload/drive/v3/files" && method === "POST") {
+      const text = new TextDecoder().decode(init.body);
+      const start = text.indexOf("\r\n\r\n") + 4;
+      const end = text.indexOf("\r\n--", start);
+      const metadata = JSON.parse(text.slice(start, end));
+      uploadCount++;
+      const id = overrides.uploadId || ("drive-file-test-" + uploadCount);
+      if (overrides.onUpload) overrides.onUpload({url,init,metadata,id});
+      return Response.json({id,name:metadata.name,mimeType:metadata.mimeType,size:1,parents:metadata.parents});
+    }
+    if (url.pathname.startsWith("/drive/v3/files/") && url.searchParams.get("alt") === "media" && method === "GET") {
+      if (overrides.onDownload) return overrides.onDownload({url,init});
+      return new Response(new Uint8Array([137,80,78,71,13,10,26,10]), {status:200});
+    }
+    if (url.pathname.startsWith("/drive/v3/files/") && method === "DELETE") {
+      if (overrides.onDelete) return overrides.onDelete({url,init});
+      return new Response(null,{status:204});
+    }
+    if (overrides.fetch) return overrides.fetch({url,init});
+    return new Response(JSON.stringify({error:"Unexpected fake Google API request."}),{status:404,headers:{"Content-Type":"application/json"}});
+  };
+}
 const env = {
   ALLOWED_ORIGIN: origin,
+  GOOGLE_CLIENT_ID: "test-oauth-client-id",
+  GOOGLE_CLIENT_SECRET: "test-oauth-client-secret",
+  GOOGLE_REFRESH_TOKEN: "test-refresh-token",
+  GOOGLE_DRIVE_FOLDER_ID: driveFolderId,
+  __googleFetch: makeGoogleFetch(),
   DB: {
     prepare() {
       return { first: async () => ({ ok: 1 }) };
     }
-  },
-  MEDIA: {
-    head: async () => null
   }
 };
 
