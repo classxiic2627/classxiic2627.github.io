@@ -62,15 +62,26 @@
         <label>Confirm new password<input id="adminConfirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
         <div class="community-actions"><button class="button button-primary" type="submit">Save new password</button><button class="button button-ghost" id="cancelAdminPasswordChange" type="button">Cancel</button></div>
       </form>
-      <form id="adminMemberPasswordChange" class="community-form" hidden>
-        <h3>Rotate the shared class upload password</h3>
-        <p>Changing this password signs out all active class-member sessions. Store the new password securely before saving; it will not be shown again. Share it only through a trusted class channel.</p>
-        <label>New class upload password (at least 12 characters)<input id="adminNewMemberPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
-        <label>Confirm new class upload password<input id="adminConfirmMemberPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
-        <div class="community-actions"><button class="button button-primary" type="submit">Rotate class password</button><button class="button button-ghost" id="cancelAdminMemberPasswordChange" type="button">Cancel</button></div>
-      </form>
-      <div id="adminSessionActions" class="community-actions" hidden><button id="showAdminPasswordChange" class="button button-ghost" type="button">Change admin password</button><button id="showAdminMemberPasswordChange" class="button button-ghost" type="button">Rotate class upload password</button><button id="adminLogout" class="button button-ghost" type="button">Admin sign out</button></div>
+      <div id="adminSessionActions" class="community-actions" hidden><button id="showAdminPasswordChange" class="button button-ghost" type="button">Change admin password</button><button id="adminLogout" class="button button-ghost" type="button">Admin sign out</button></div>
       <div id="adminArea" hidden>
+        <h3>Student accounts</h3>
+        <p>Create individual accounts for students. Temporary passwords are shown only to the administrator who creates or resets them; share them privately.</p>
+        <form id="accountForm" class="community-form">
+          <input id="accountId" type="hidden">
+          <label>Username<input id="accountUsername" maxlength="64" autocomplete="off" required></label>
+          <label>Email<input id="accountEmail" type="email" maxlength="254" autocomplete="off" required></label>
+          <label>Display name<input id="accountDisplayName" maxlength="100" required></label>
+          <label id="accountTempPasswordLabel">Temporary password (at least 12 characters)<input id="accountTempPassword" type="password" minlength="12" maxlength="256" autocomplete="new-password" required></label>
+          <div class="community-actions"><button id="accountSaveButton" class="button button-primary" type="submit">Create student account</button><button id="accountCancelEdit" class="button button-ghost" type="button" hidden>Cancel edit</button></div>
+        </form>
+        <div id="accountList"><p>Student accounts will appear here after sign-in.</p></div>
+        <form id="accountResetForm" class="community-form" hidden>
+          <h4>Reset temporary password</h4>
+          <input id="accountResetId" type="hidden">
+          <p id="accountResetLabel"></p>
+          <label>New temporary password (at least 12 characters)<input id="accountResetPassword" type="password" minlength="12" maxlength="256" autocomplete="new-password" required></label>
+          <div class="community-actions"><button class="button button-primary" type="submit">Reset password and sign out this account</button><button id="accountCancelReset" class="button button-ghost" type="button">Cancel</button></div>
+        </form>
         <h3>Published posts</h3><div id="adminItems"></div>
         <h3>Post an announcement</h3>
         <form id="announcementForm" class="community-form"><label>Title<input id="announcementTitle" maxlength="120" required></label><label>Announcement<textarea id="announcementBody" maxlength="3000" required></textarea></label><button class="button button-primary" type="submit">Publish announcement</button></form>
