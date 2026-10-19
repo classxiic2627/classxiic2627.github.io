@@ -254,7 +254,9 @@ async function handle(request, env) {
     await requireChangedPassword(user);
     const length = Number(request.headers.get("content-length") || 0);
     if (length > MAX_MEDIA_BYTES + 1024 * 1024) fail("Upload exceeds 15 MB.", 413);
-    const form = await request.formData();
+    let form;
+    try { form = await request.formData(); }
+    catch { fail("Invalid upload form."); }
     const type = form.get("type");
     const title = cleanText(form.get("title"), 120, "Title", true);
     const caption = cleanText(form.get("caption"), 1000, "Caption");
