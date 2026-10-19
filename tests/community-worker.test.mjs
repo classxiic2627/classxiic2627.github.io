@@ -550,14 +550,10 @@ test("one-time setup refuses to overwrite existing accounts", async () => {
     SETUP_SECRET: setupSecret,
     DB: {
       prepare(sql) {
-        const first = async () => {
-          if (sql.includes("FROM auth_attempts")) return { n: 0 };
-          if (sql.includes("COUNT(*) AS n FROM users")) return { n: 2 };
-          return null;
-        };
+        const first = async () => sql.includes("FROM auth_attempts") ? { n: 0 } : null;
         return {
           first,
-          bind() { return { first, run: async () => ({ success: true }) }; }
+          bind() { return { first, run: async () => ({ success: true, meta: { changes: 0 } }) }; }
         };
       },
       async batch() { batches++; }
@@ -571,7 +567,7 @@ test("one-time setup refuses to overwrite existing accounts", async () => {
       "Content-Type": "application/json",
       "X-Setup-Secret": setupSecret
     },
-    body: "{}"
+    body: JSON.stringify({adminUsername:"archive-admin",adminEmail:"admin@example.test",adminPassword:"a-long-unique-test-password"})
   }), setupEnv);
   assert.equal(response.status, 409);
   assert.deepEqual(await response.json(), {
@@ -580,95 +576,13 @@ test("one-time setup refuses to overwrite existing accounts", async () => {
   assert.equal(batches, 0);
 });
 
-test("shared class members cannot change the shared password themselves", async () => {
-  const response = await worker.fetch(request("/api/account/password", {
-    method: "POST",
-    headers: {
-      Origin: origin,
-      Authorization: "Bearer " + "h".repeat(64),
-      "Content-Type": "application/json"
-    }
-  }), authenticatedEnv(memberSession));
-  assert.equal(response.status, 403);
-  assert.deepEqual(await response.json(), {
-    error: "The shared class upload password is managed by the administrator."
-  });
-});
-
-test("shared class members cannot use the admin password-rotation route", async () => {
+test("legacy shared-password rotation endpoint is removed", async () => {
   const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
     method: "POST",
-    headers: {
-      Origin: origin,
-      Authorization: "Bearer " + "i".repeat(64),
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ newPassword: "a-long-test-password-value" })
-  }), authenticatedEnv(memberSession));
-  assert.equal(response.status, 403);
-  assert.deepEqual(await response.json(), {
-    error: "You do not have permission to do that."
-  });
-});
-
-test("admin member-password rotation enforces minimum password length", async () => {
-  const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
-    method: "POST",
-    headers: {
-      Origin: origin,
-      Authorization: "Bearer " + "j".repeat(64),
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ newPassword: "short" })
+    headers: {Origin:origin,Authorization:"Bearer " + "j".repeat(64),"Content-Type":"application/json"},
+    body: JSON.stringify({newPassword:"a-long-test-password-value"})
   }), authenticatedEnv(adminSession));
-  assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), {
-    error: "The new class upload password must be at least 12 characters and cannot be blank."
-  });
-});
-
-test("admin rotation hashes the shared password and revokes member sessions atomically", async () => {
-  const batches = [];
-  const rotationEnv = {
-    ...env,
-    DB: {
-      prepare(sql) {
-        return {
-          sql,
-          bind(...values) {
-            return {
-              sql,
-              values,
-              first: async () => {
-                if (sql.includes("SELECT id FROM users")) return { id: memberSession.id };
-                return adminSession;
-              }
-            };
-          }
-        };
-      },
-      async batch(statements) {
-        batches.push(statements);
-        return statements.map(() => ({ success: true }));
-      }
-    }
-  };
-  const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
-    method: "POST",
-    headers: {
-      Origin: origin,
-      Authorization: "Bearer " + "k".repeat(64),
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ newPassword: "x".repeat(12) })
-  }), rotationEnv);
-  assert.equal(response.status, 200);
-  assert.equal(batches.length, 1);
-  assert.equal(batches[0].length, 2);
-  assert.ok(batches[0].some(statement => statement.sql.includes("UPDATE users SET password_hash")));
-  assert.ok(batches[0].some(statement => statement.sql.includes("DELETE FROM sessions")));
-  const data = await response.json();
-  assert.equal(data.ok, true);
+  assert.equal(response.status, 404);
 });
 
 test("health endpoint reports an R2 dependency failure", async () => {
@@ -781,18 +695,14 @@ test("fails closed for browser origins when ALLOWED_ORIGIN is missing", async ()
 });
 
 test("rejects passwords made entirely of whitespace", async () => {
-  const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
+  const response = await worker.fetch(new Request("https://api.example.test/api/account/password", {
     method: "POST",
-    headers: {
-      Origin: origin,
-      Authorization: "Bearer " + "l".repeat(64),
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ newPassword: " ".repeat(16) })
+    headers: {Origin:origin,Authorization:"Bearer " + "l".repeat(64),"Content-Type":"application/json"},
+    body: JSON.stringify({currentPassword:"valid-looking-current-password",newPassword:" ".repeat(16)})
   }), authenticatedEnv(adminSession));
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), {
-    error: "The new class upload password must be at least 12 characters and cannot be blank."
+    error: "Current password must be valid and the new password must be at least 12 non-blank characters."
   });
 });
 
@@ -878,15 +788,9 @@ test("successful member login creates a hashed, expiring session", async () => {
   assert.ok(sessionInsert.values[2] > sessionInsert.values[3]);
 });
 
-test("admin must complete a required password change before rotating member credentials", async () => {
-  const response = await worker.fetch(new Request("https://api.example.test/api/admin/member-password", {
-    method: "POST",
-    headers: {
-      Origin: origin,
-      Authorization: "Bearer " + "o".repeat(64),
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ newPassword: "x".repeat(16) })
+test("admin with a temporary password cannot access account management before changing it", async () => {
+  const response = await worker.fetch(request("/api/admin/users", {
+    headers: {Origin:origin,Authorization:"Bearer " + "o".repeat(64)}
   }), authenticatedEnv({ ...adminSession, must_change_password: 1 }));
   assert.equal(response.status, 403);
   assert.deepEqual(await response.json(), {
