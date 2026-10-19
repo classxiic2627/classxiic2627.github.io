@@ -121,6 +121,8 @@ Prerequisites: Node.js 22+, npm, and Wrangler 4. Start from a clean checkout of 
 5. In a local-only working copy of `community.html`, set `<meta name="community-api-base" content="http://127.0.0.1:8787">`. Do not commit that localhost value to the published site.
 6. Initialize the first admin from a trusted terminal, not the browser. For example, use PowerShell and keep the secret/password in local environment variables:
    ```powershell
+   $env:SETUP_SECRET = Read-Host "Local setup secret"
+   $env:LOCAL_ADMIN_PASSWORD = Read-Host "Local admin password"
    $headers = @{ "X-Setup-Secret" = $env:SETUP_SECRET }
    $body = @{
      adminUsername = "local-admin"
