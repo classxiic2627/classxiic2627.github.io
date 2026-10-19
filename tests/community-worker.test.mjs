@@ -100,12 +100,16 @@ function authenticatedEnv(user) {
   return {
     ...env,
     DB: {
-      prepare() {
+      prepare(sql) {
         return {
           bind() {
             return {
               first: async () => user,
-              run: async () => ({ success: true })
+              run: async () => {
+                if (sql.includes("INSERT INTO auth_attempts")) return { success: true, meta: { changes: 1, last_row_id: 900 } };
+                if (sql.includes("DELETE FROM auth_attempts")) return { success: true, meta: { changes: 1, last_row_id: 900 } };
+                return { success: true };
+              }
             };
           }
         };
@@ -600,10 +604,10 @@ test("throttles login attempts after the configured failure threshold", async ()
     ...env,
     DB: {
       prepare(sql) {
-        assert.match(sql, /FROM auth_attempts/);
+        assert.match(sql, /INSERT INTO auth_attempts/);
         return {
           bind() {
-            return { first: async () => ({ n: 10 }) };
+            return { run: async () => ({ success: true, meta: { changes: 0 } }) };
           }
         };
       }
@@ -671,7 +675,7 @@ test("records failed credential checks for login throttling", async () => {
                   : null,
               run: async () => {
                 statements.push({ sql, values });
-                return { success: true };
+                return { success: true, meta: { changes: 1, last_row_id: 901 } };
               }
             };
           }
@@ -697,10 +701,10 @@ test("rejects null login payloads as client errors", async () => {
     ...env,
     DB: {
       prepare(sql) {
-        assert.match(sql, /FROM auth_attempts/);
+        assert.match(sql, /INSERT INTO auth_attempts/);
         return {
           bind() {
-            return { first: async () => ({ n: 0 }) };
+            return { run: async () => ({ success: true, meta: { changes: 1, last_row_id: 902 } }) };
           }
         };
       }
@@ -725,10 +729,10 @@ test("throttles repeated initial-setup attempts", async () => {
     SETUP_SECRET: "a-long-random-setup-secret-for-testing",
     DB: {
       prepare(sql) {
-        assert.match(sql, /FROM auth_attempts/);
+        assert.match(sql, /INSERT INTO auth_attempts/);
         return {
           bind() {
-            return { first: async () => ({ n: 10 }) };
+            return { run: async () => ({ success: true, meta: { changes: 0 } }) };
           }
         };
       }
@@ -797,7 +801,7 @@ test("rejects null setup payloads without creating accounts", async () => {
               first,
               run: async () => {
                 statements.push({ sql, values });
-                return { success: true };
+                return { success: true, meta: { changes: 1, last_row_id: 903 } };
               }
             };
           }
@@ -848,11 +852,8 @@ test("throttles password-change verification attempts per authenticated account"
         return {
           bind() {
             return {
-              first: async () => {
-                if (sql.includes("FROM sessions")) return adminSession;
-                if (sql.includes("FROM auth_attempts")) return { n: 10 };
-                return null;
-              }
+              first: async () => sql.includes("FROM sessions") ? adminSession : null,
+              run: async () => ({ success: true, meta: { changes: 0 } })
             };
           }
         };
@@ -883,11 +884,8 @@ test("rejects null password-change payloads as client errors", async () => {
         return {
           bind() {
             return {
-              first: async () => {
-                if (sql.includes("FROM sessions")) return adminSession;
-                if (sql.includes("FROM auth_attempts")) return { n: 0 };
-                return null;
-              }
+              first: async () => sql.includes("FROM sessions") ? adminSession : null,
+              run: async () => ({ success: true, meta: { changes: 1, last_row_id: 904 } })
             };
           }
         };
@@ -961,7 +959,7 @@ test("records failed current-password checks for throttling", async () => {
               },
               run: async () => {
                 statements.push({ sql, values });
-                return { success: true };
+                return { success: true, meta: { changes: 1, last_row_id: 905 } };
               }
             };
           }
@@ -998,7 +996,14 @@ test("one-time setup refuses to overwrite existing accounts", async () => {
         const first = async () => sql.includes("FROM auth_attempts") ? { n: 0 } : null;
         return {
           first,
-          bind() { return { first, run: async () => ({ success: true, meta: { changes: 0 } }) }; }
+          bind() {
+            return {
+              first,
+              run: async () => sql.includes("INSERT INTO auth_attempts") || sql.includes("DELETE FROM auth_attempts")
+                ? { success: true, meta: { changes: 1, last_row_id: 906 } }
+                : { success: true, meta: { changes: 0 } }
+            };
+          }
         };
       },
       async batch() { batches++; }
@@ -1036,7 +1041,7 @@ test("first-admin setup uses a single conditional insert and requires an email",
               first:async()=> sql.includes("FROM auth_attempts") ? {n:0} : null,
               run:async()=>{
                 statements.push({sql,values});
-                return {success:true,meta:{changes:1}};
+                return {success:true,meta:{changes:1,last_row_id:907}};
               }
             };
           }
@@ -1097,7 +1102,7 @@ test("rejects oversized setup secrets and records the failed attempt", async () 
               first: async () => ({ n: 0 }),
               run: async () => {
                 statements.push({ sql, values });
-                return { success: true };
+                return { success: true, meta: { changes: 1, last_row_id: 908 } };
               }
             };
           }
@@ -1136,7 +1141,7 @@ test("unknown usernames receive the same login error and count toward throttling
               },
               run: async () => {
                 statements.push({ sql, values });
-                return { success: true };
+                return { success: true, meta: { changes: 1, last_row_id: 909 } };
               }
             };
           }
@@ -1222,7 +1227,7 @@ test("rejects oversized JSON bodies when Content-Length is absent", async () => 
           bind() {
             return {
               first: async () => ({ n: 0 }),
-              run: async () => ({ success: true })
+              run: async () => ({ success: true, meta: { changes: 1, last_row_id: 912 } })
             };
           }
         };
@@ -1253,7 +1258,7 @@ test("rejects oversized numeric Content-Length before reading the request body",
           bind() {
             return {
               first: async () => ({ n: 0 }),
-              run: async () => ({ success: true })
+              run: async () => ({ success: true, meta: { changes: 1, last_row_id: 913 } })
             };
           }
         };
@@ -1442,7 +1447,7 @@ test("successful member login creates a hashed, expiring session", async () => {
               },
               run: async () => {
                 statements.push({ sql, values });
-                return { success: true };
+                return { success: true, meta: { changes: 1, last_row_id: 910 } };
               }
             };
           }
@@ -1494,7 +1499,7 @@ test("member can replace a temporary password and atomically revoke all sessions
                 if (sql.includes("SELECT password_hash FROM users")) return {password_hash:passwordHash};
                 return null;
               },
-              run:async()=>{statements.push({sql,values});return {success:true};}
+              run:async()=>{statements.push({sql,values});return {success:true,meta:{changes:1,last_row_id:911}};}
             };
           }
         };
