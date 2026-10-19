@@ -367,3 +367,20 @@ test("rejects null setup payloads without creating accounts", async () => {
   assert.deepEqual(await response.json(), { error: "Invalid request body." });
   assert.equal(statements.some(({ sql }) => sql.includes("INSERT INTO users")), false);
 });
+
+test("health endpoint reports a dependency failure when D1 is unreachable", async () => {
+  const brokenEnv = {
+    ALLOWED_ORIGIN: origin,
+    DB: {
+      prepare() {
+        return { first: async () => { throw new Error("simulated D1 outage"); } };
+      }
+    },
+    MEDIA: { head: async () => null }
+  };
+  const response = await worker.fetch(request("/api/health", {
+    headers: { Origin: origin }
+  }), brokenEnv);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "Internal server error." });
+});
