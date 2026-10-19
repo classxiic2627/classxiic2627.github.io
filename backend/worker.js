@@ -35,6 +35,8 @@ function json(data, status = 200, origin = null) {
     }
   });
 }
+// Deliberately omit X-Setup-Secret: first-admin setup is CLI-only so the
+// bootstrap secret never needs to enter browser JavaScript or frontend state.
 function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": origin,
