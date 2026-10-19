@@ -274,7 +274,14 @@ async function handle(request, env) {
     if (supplied.length < 16 || supplied.length > 256 || !constantTimeEqual(await digest(supplied), await digest(env.SETUP_SECRET))) {
       fail("Not authorized.", 401);
     }
-    await clearAuthReservation(env, attempt);
+    // Avoid repeated expensive password hashing after initialization. Keep this
+    // request's reservation on the 409 path so valid-secret retries still count
+    // toward the per-IP setup threshold. The conditional INSERT below remains
+    // the final race guard if two first-time setup requests overlap.
+    const existingAdmin = await env.DB.prepare("SELECT 1 AS present FROM users LIMIT 1").first();
+    if (existingAdmin) {
+      fail("Setup has already been completed. Rotate the setup secret and remove it when finished.", 409);
+    }
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
     const adminUsername = normalizeUsername(body.adminUsername);
@@ -290,6 +297,7 @@ async function handle(request, env) {
     if (Number(result.meta?.changes || 0) !== 1) {
       fail("Setup has already been completed. Rotate the setup secret and remove it when finished.", 409);
     }
+    await clearAuthReservation(env, attempt);
     return json({ok:true, message:"Administrator initialized. Create student accounts from the admin desk and rotate/remove SETUP_SECRET."}, 201, env.ALLOWED_ORIGIN);
   }
   if (request.method === "POST" && path === "/api/member/login") return login(request, env, "member");
