@@ -1654,12 +1654,12 @@ test("keeps the 50 MiB upload cap aligned across Worker, browser, UI, and docs",
   const clientSource = readFileSync(new URL("../community.js", import.meta.url), "utf8");
   const htmlSource = readFileSync(new URL("../community.html", import.meta.url), "utf8");
   const readmeSource = readFileSync(new URL("../backend/README.md", import.meta.url), "utf8");
-  assert.match(workerSource, /const MAX_MEDIA_BYTES = 50 \\* 1024 \\* 1024;/);
-  assert.match(workerSource, /const MAX_UPLOAD_REQUEST_BYTES = MAX_MEDIA_BYTES \\+ 1024 \\* 1024;/);
+  assert.match(workerSource, /const MAX_MEDIA_BYTES = 50 \* 1024 \* 1024;/);
+  assert.match(workerSource, /const MAX_UPLOAD_REQUEST_BYTES = MAX_MEDIA_BYTES \+ 1024 \* 1024;/);
   assert.match(workerSource, /Upload request exceeds the 50 MB media limit/);
-  assert.match(clientSource, /file\\.size > 50 \\* 1024 \\* 1024/);
+  assert.match(clientSource, /file\.size > 50 \* 1024 \* 1024/);
   assert.match(htmlSource, /Maximum file size: 50 MB/);
-  assert.match(readmeSource, /51 MiB \\(50 MiB media/);
+  assert.match(readmeSource, /51 MiB \(50 MiB media/);
 });
 
 test("rejects multipart uploads over the 50 MB limit from declared length before parsing", async () => {
