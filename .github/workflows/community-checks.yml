@@ -84,5 +84,30 @@ jobs:
           missing = expected - actual
           if missing:
               raise SystemExit(f"Missing schema tables: {sorted(missing)}")
-          print(f"Schema OK: {len(expected)} expected tables created.")
+
+          try:
+              connection.execute(
+                  "INSERT INTO users(username,display_name,role,password_hash) VALUES(?,?,?,?)",
+                  ("invalid-role", "Invalid Role", "superuser", "not-a-real-hash"),
+              )
+          except sqlite3.IntegrityError:
+              pass
+          else:
+              raise SystemExit("Users table accepted an invalid role.")
+
+          connection.execute(
+              "INSERT INTO users(username,display_name,role,password_hash) VALUES(?,?,?,?)",
+              ("schema-test", "Schema Test", "member", "not-a-real-hash"),
+          )
+          try:
+              connection.execute(
+                  "INSERT INTO users(username,display_name,role,password_hash) VALUES(?,?,?,?)",
+                  ("SCHEMA-TEST", "Duplicate Test", "admin", "not-a-real-hash"),
+              )
+          except sqlite3.IntegrityError:
+              pass
+          else:
+              raise SystemExit("Username uniqueness is not case-insensitive.")
+
+          print(f"Schema OK: {len(expected)} expected tables and core constraints validated.")
           PY
