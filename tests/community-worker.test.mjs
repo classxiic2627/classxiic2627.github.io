@@ -413,6 +413,42 @@ test("member disable route cannot delete sessions for an administrator ID", asyn
   assert.deepEqual(statements[1].values,[8,8]);
 });
 
+test("R2 delete failure preserves the D1 content row so an admin can retry", async () => {
+  const executed = [];
+  const deleteEnv = {
+    ...env,
+    DB: {
+      prepare(sql) {
+        return {
+          sql,
+          bind(...values) {
+            return {
+              sql,values,
+              first:async()=>{
+                if (sql.includes("FROM sessions s JOIN users")) return adminSession;
+                if (sql.includes("SELECT media_key FROM content")) return {media_key:"uploads/retryable-item"};
+                return null;
+              },
+              run:async()=>{executed.push({sql,values});return {success:true,meta:{changes:1}};}
+            };
+          }
+        };
+      }
+    },
+    MEDIA: {
+      ...env.MEDIA,
+      delete:async key=>{executed.push({mediaDelete:key});throw new Error("simulated R2 failure");}
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/admin/content/retryable-item", {
+    method:"DELETE",
+    headers:{Origin:origin,Authorization:"Bearer " + "c".repeat(64)}
+  }),deleteEnv);
+  assert.equal(response.status,500);
+  assert.ok(executed.some(item=>item.mediaDelete==="uploads/retryable-item"));
+  assert.equal(executed.some(item=>item.sql?.includes("DELETE FROM content WHERE id=?")),false);
+});
+
 test("protected upload route rejects missing authentication", async () => {
   const response = await worker.fetch(request("/api/content", {
     method: "POST",
