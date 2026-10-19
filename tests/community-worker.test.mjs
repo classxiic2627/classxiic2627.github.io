@@ -12,6 +12,7 @@ function makeGoogleFetch(overrides = {}) {
     const url = new URL(typeof input === "string" ? input : input.url);
     const method = init.method || "GET";
     if (url.href === "https://oauth2.googleapis.com/token") {
+      if (overrides.onToken) return overrides.onToken({url,init});
       return Response.json({access_token:"test-drive-access-token",expires_in:3600});
     }
     if (url.pathname === "/drive/v3/files/" + driveFolderId && method === "GET") {
@@ -102,6 +103,27 @@ test("service-worker notification clicks reject off-origin and malformed URLs", 
   assert.deepEqual(focused, ["archive", "archive"]);
 });
 
+test("Google OAuth refresh credentials stay server-side and are used only for token exchange", async () => {
+  let tokenForm = null;
+  const oauthEnv = {
+    ...env,
+    GOOGLE_CLIENT_ID: "unique-oauth-client-for-token-test",
+    GOOGLE_CLIENT_SECRET: "unique-client-secret-test",
+    GOOGLE_REFRESH_TOKEN: "unique-refresh-token-test",
+    __googleFetch: makeGoogleFetch({onToken:({init})=>{
+      tokenForm = new URLSearchParams(init.body);
+      return Response.json({access_token:"private-test-access-token",expires_in:3600});
+    }})
+  };
+  const response = await worker.fetch(request("/api/health", {headers:{Origin:origin}}),oauthEnv);
+  assert.equal(response.status,200);
+  assert.equal(tokenForm.get("grant_type"),"refresh_token");
+  assert.equal(tokenForm.get("client_id"),oauthEnv.GOOGLE_CLIENT_ID);
+  assert.equal(tokenForm.get("client_secret"),oauthEnv.GOOGLE_CLIENT_SECRET);
+  assert.equal(tokenForm.get("refresh_token"),oauthEnv.GOOGLE_REFRESH_TOKEN);
+  const body = JSON.stringify(await response.json());
+  assert.doesNotMatch(body,/unique-client-secret-test|unique-refresh-token-test|private-test-access-token/);
+});
 test("health endpoint returns a non-cacheable success response", async () => {
   const response = await worker.fetch(request("/api/health", {
     headers: { Origin: origin }
@@ -1155,7 +1177,6 @@ test("health endpoint reports a dependency failure when D1 is unreachable", asyn
         return { first: async () => { throw new Error("simulated D1 outage"); } };
       }
     },
-    MEDIA: { head: async () => null }
   };
   const response = await worker.fetch(request("/api/health", {
     headers: { Origin: origin }
@@ -1486,7 +1507,6 @@ test("unknown usernames receive the same login error and count toward throttling
 test("fails closed for browser origins when ALLOWED_ORIGIN is missing", async () => {
   const unconfiguredEnv = {
     DB: env.DB,
-    MEDIA: env.MEDIA
   };
   const preflight = await worker.fetch(request("/api/content", {
     method: "OPTIONS",
@@ -1737,6 +1757,35 @@ test("removes an uploaded Google Drive file when D1 metadata insertion fails", a
   assert.deepEqual(deletedIds, ["drive-file-cleanup"]);
 });
 
+test("media endpoint streams private Google Drive bytes through the Worker", async () => {
+  const pngBytes = Buffer.from([137,80,78,71,13,10,26,10,0,1,2,3]);
+  let requestedFileId = null;
+  const mediaEnv = {
+    ...env,
+    __googleFetch: makeGoogleFetch({onDownload:({url,init})=>{
+      requestedFileId = url.pathname.split("/").pop();
+      assert.equal(init.headers.Authorization,"Bearer test-drive-access-token");
+      return new Response(pngBytes,{status:200,headers:{"Content-Type":"image/png"}});
+    }}),
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {first:async()=>sql.includes("FROM content")?{
+              media_key:"drive-file-read-test",media_mime:"image/png",media_size:pngBytes.length
+            }:null};
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(request("/api/media/memory-id",{headers:{Origin:origin}}),mediaEnv);
+  assert.equal(response.status,200);
+  assert.equal(requestedFileId,"drive-file-read-test");
+  assert.equal(response.headers.get("content-type"),"image/png");
+  assert.equal(response.headers.get("cache-control"),"private, max-age=60");
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()),pngBytes);
+});
 test("successful member login creates a hashed, expiring session", async () => {
   const statements = [];
   const user = {
