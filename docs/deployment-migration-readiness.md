@@ -135,3 +135,5 @@ Before any approved migration:
 - [ ] Inventory the target D1, verify backup/restore, and review a migration matched to the observed schema.
 - [ ] Verify staging end-to-end with isolated D1 and Drive resources, exact CORS/API origin, Cron Trigger, and edge rate limits.
 - [ ] Obtain explicit owner approval before merge/deployment or any production action.
+
+**Current decision: BLOCKED pending the unchecked evidence and owner decisions above.** Green automated CI and isolated local D1 smoke tests do not prove real Google Drive access, Cloudflare staging readiness, or permission to launch.
