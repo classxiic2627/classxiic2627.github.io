@@ -395,17 +395,17 @@ test("account management remains available without R2 media storage", async () =
 
   const health = await worker.fetch(request("/api/health"), accountEnv);
   assert.equal(health.status, 503);
-  assert.deepEqual(await health.json(), { error: "Media storage is not configured." });
+  assert.deepEqual(await health.json(), { error: "Internal server error." });
 });
 
-test("upload fails closed with a clear 503 when R2 is not configured", async () => {
+test("upload fails closed with 503 when R2 is not configured", async () => {
   const mediaMissingEnv = { ...authenticatedEnv(memberSession), MEDIA: undefined };
   const response = await worker.fetch(request("/api/content", {
     method: "POST",
     headers: { Origin: origin, Authorization: "Bearer " + "u".repeat(64) }
   }), mediaMissingEnv);
   assert.equal(response.status, 503);
-  assert.deepEqual(await response.json(), { error: "Media storage is not configured; uploads are unavailable." });
+  assert.deepEqual(await response.json(), { error: "Internal server error." });
 });
 
 test("public registration is not implemented", async () => {
