@@ -5,6 +5,8 @@
   const $ = (id) => document.getElementById(id);
   let memberToken = "";
   let adminToken = "";
+  let memberMustChangePassword = false;
+  let adminMustChangePassword = false;
 
   async function api(path, options = {}, token = "") {
     if (!API_BASE) throw new Error("The community API is not connected yet. Deployment setup is still required.");
@@ -63,19 +65,62 @@
     try {
       const data = await api("/api/member/login", {method:"POST", body:JSON.stringify({password:$("memberPassword").value})});
       memberToken = data.token;
-      $("uploadForm").hidden = false;
+      memberMustChangePassword = !!data.mustChangePassword;
       $("memberLogin").hidden = true;
       $("memberPassword").value = "";
-      status("memberStatus", "Signed in. Posts are visible to visitors of the class archive.");
+      $("memberPasswordChange").hidden = !memberMustChangePassword;
+      $("cancelMemberPasswordChange").hidden = memberMustChangePassword;
+      $("uploadForm").hidden = memberMustChangePassword;
+      status("memberStatus", memberMustChangePassword
+        ? "For account safety, change the temporary password before uploading."
+        : "Signed in. Posts are visible to visitors of the class archive.");
     } catch (error) { status("memberStatus", error.message); }
   });
   $("memberLogout").addEventListener("click", async () => {
     try { if (memberToken) await api("/api/logout", {method:"POST"}, memberToken); } catch (_) {}
     memberToken = "";
+    memberMustChangePassword = false;
     $("uploadForm").hidden = true;
+    $("memberPasswordChange").hidden = true;
     $("memberLogin").hidden = false;
     $("uploadForm").reset();
+    $("memberPasswordChange").reset();
     status("memberStatus", "Signed out.");
+  });
+  $("showMemberPasswordChange").addEventListener("click", () => {
+    $("memberPasswordChange").hidden = false;
+    $("cancelMemberPasswordChange").hidden = false;
+  });
+  $("cancelMemberPasswordChange").addEventListener("click", () => {
+    if (memberMustChangePassword) return;
+    $("memberPasswordChange").reset();
+    $("memberPasswordChange").hidden = true;
+  });
+  $("memberPasswordChange").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const currentPassword = $("memberCurrentPassword").value;
+    const newPassword = $("memberNewPassword").value;
+    if (newPassword !== $("memberConfirmPassword").value) {
+      status("memberStatus", "The new password and confirmation do not match.");
+      return;
+    }
+    if (newPassword.length < 12) {
+      status("memberStatus", "Choose a password with at least 12 characters.");
+      return;
+    }
+    try {
+      await api("/api/account/password", {
+        method:"POST",
+        body:JSON.stringify({currentPassword, newPassword})
+      }, memberToken);
+      memberToken = "";
+      memberMustChangePassword = false;
+      $("memberPasswordChange").reset();
+      $("memberPasswordChange").hidden = true;
+      $("uploadForm").hidden = true;
+      $("memberLogin").hidden = false;
+      status("memberStatus", "Password changed. Please sign in again with your new password.");
+    } catch (error) { status("memberStatus", error.message); }
   });
   $("uploadForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -103,11 +148,18 @@
         password:$("adminPassword").value
       })});
       adminToken = data.token;
-      $("adminArea").hidden = false;
+      adminMustChangePassword = !!data.mustChangePassword;
       $("adminLogin").hidden = true;
       $("adminPassword").value = "";
-      await refreshAdmin();
-      status("adminStatus", "Signed in as administrator.");
+      $("adminPasswordChange").hidden = !adminMustChangePassword;
+      $("cancelAdminPasswordChange").hidden = adminMustChangePassword;
+      $("adminArea").hidden = adminMustChangePassword;
+      if (adminMustChangePassword) {
+        status("adminStatus", "For account safety, change the temporary password before using the admin desk.");
+      } else {
+        await refreshAdmin();
+        status("adminStatus", "Signed in as administrator.");
+      }
     } catch (error) { status("adminStatus", error.message); }
   });
   async function refreshAdmin() {
@@ -134,6 +186,41 @@
     }
     if (!list.children.length) list.append(node("p", "No published posts yet."));
   }
+  $("showAdminPasswordChange").addEventListener("click", () => {
+    $("adminPasswordChange").hidden = false;
+    $("cancelAdminPasswordChange").hidden = false;
+  });
+  $("cancelAdminPasswordChange").addEventListener("click", () => {
+    if (adminMustChangePassword) return;
+    $("adminPasswordChange").reset();
+    $("adminPasswordChange").hidden = true;
+  });
+  $("adminPasswordChange").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const currentPassword = $("adminCurrentPassword").value;
+    const newPassword = $("adminNewPassword").value;
+    if (newPassword !== $("adminConfirmPassword").value) {
+      status("adminStatus", "The new password and confirmation do not match.");
+      return;
+    }
+    if (newPassword.length < 12) {
+      status("adminStatus", "Choose a password with at least 12 characters.");
+      return;
+    }
+    try {
+      await api("/api/account/password", {
+        method:"POST",
+        body:JSON.stringify({currentPassword, newPassword})
+      }, adminToken);
+      adminToken = "";
+      adminMustChangePassword = false;
+      $("adminPasswordChange").reset();
+      $("adminPasswordChange").hidden = true;
+      $("adminArea").hidden = true;
+      $("adminLogin").hidden = false;
+      status("adminStatus", "Password changed. Please sign in again with your new password.");
+    } catch (error) { status("adminStatus", error.message); }
+  });
   $("announcementForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -148,6 +235,9 @@
   $("adminLogout").addEventListener("click", async () => {
     try { if (adminToken) await api("/api/logout", {method:"POST"}, adminToken); } catch (_) {}
     adminToken = "";
+    adminMustChangePassword = false;
+    $("adminPasswordChange").hidden = true;
+    $("adminPasswordChange").reset();
     $("adminArea").hidden = true;
     $("adminLogin").hidden = false;
     status("adminStatus", "Signed out.");
