@@ -1,7 +1,7 @@
 /* Community Hub frontend. Set API_BASE to the deployed Worker origin before launch. */
 (() => {
   "use strict";
-  const API_BASE = ""; // Example: https://class-archive-api.example.workers.dev
+  const API_BASE = (document.querySelector('meta[name="community-api-base"]')?.content || "").trim().replace(/\/+$/, "");
   const $ = (id) => document.getElementById(id);
   let memberToken = "";
   let adminToken = "";
@@ -9,7 +9,7 @@
   let adminMustChangePassword = false;
 
   async function api(path, options = {}, token = "") {
-    if (!API_BASE) throw new Error("The community API is not connected yet. Deployment setup is still required.");
+    if (!API_BASE) throw new Error("Community API is not configured. Set the community-api-base meta value to the approved Worker URL after staging verification.");
     const headers = new Headers(options.headers || {});
     if (token) headers.set("Authorization", "Bearer " + token);
     if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
