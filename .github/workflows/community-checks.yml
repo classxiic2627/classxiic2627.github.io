@@ -15,7 +15,6 @@ on:
   push:
     branches:
       - main
-      - "feature/community-security-foundation"
     paths:
       - "community.js"
       - "community.html"
