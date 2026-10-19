@@ -257,3 +257,34 @@ test("rejects null login payloads as client errors", async () => {
   assert.equal(response.status, 400);
   assert.deepEqual(await response.json(), { error: "Invalid request body." });
 });
+
+test("throttles repeated initial-setup attempts", async () => {
+  const setupEnv = {
+    ...env,
+    SETUP_SECRET: "a-long-random-setup-secret-for-testing",
+    DB: {
+      prepare(sql) {
+        assert.match(sql, /FROM auth_attempts/);
+        return {
+          bind() {
+            return { first: async () => ({ n: 10 }) };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/setup", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.45",
+      "Content-Type": "application/json",
+      "X-Setup-Secret": "wrong-secret-value-long-enough"
+    },
+    body: "{}"
+  }), setupEnv);
+  assert.equal(response.status, 429);
+  assert.deepEqual(await response.json(), {
+    error: "Too many attempts. Please try again in 15 minutes."
+  });
+});
