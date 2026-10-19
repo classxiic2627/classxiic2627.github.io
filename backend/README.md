@@ -92,7 +92,11 @@ Prerequisites: Node.js 22+, npm, and Wrangler 4. Start from a clean checkout of 
    }
    python -m http.server 8000 --bind 127.0.0.1 --directory $demoSite
    ```
-   Remove the temporary directory after stopping the server. For a managed one-command flow, prefer `npm run demo:local`, which uses an allowlisted temporary document root and cleans it up on exit.
+   After stopping the server with Ctrl+C, remove the temporary copy:
+   ```powershell
+   Remove-Item -Recurse -Force $demoSite
+   ```
+   For a managed one-command flow, prefer `npm run demo:local`, which uses an allowlisted temporary document root and cleans it up on exit.
 5. Open the static site at `http://127.0.0.1:8000/community.html`. On plain-HTTP `127.0.0.1` only, the existing frontend automatically defaults to the local Worker at `http://127.0.0.1:8787` (matching the local CORS origin). The committed `community-api-base` meta value remains blank, and the published site does not use the localhost fallback.
 6. Initialize the first admin from a trusted terminal, not the browser. For example, use PowerShell and keep the secret/password in local environment variables:
    ```powershell
