@@ -128,7 +128,7 @@ Before any approved migration:
 ## 5. Release checklist
 
 - [x] Prior code head `446c68b3e335bd8384b3fdcfd3430148ad8e7763` passed run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369), including 71/71 automated tests and syntax/DOM/schema checks.
-- [x] Fix Worker-test regressions and obtain passing exact-head CI after the health-route split; run [39292922092](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292922092) passed 72/72 tests and all configured CI checks.
+- [x] Health-route split regressions fixed and verified on exact head `16fe44b78f3eb9f593a839c0940049d95c34e094`; run [39292922092](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39292922092) passed 72/72 tests and all configured CI checks.
 - [x] Local D1 smoke script passed in CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369); real Google Drive remains unverified.
 - [ ] Verify real Google OAuth and Drive folder access using a dedicated test account/folder.
 - [ ] Resolve public-media visibility and class-photo consent/removal policy.
