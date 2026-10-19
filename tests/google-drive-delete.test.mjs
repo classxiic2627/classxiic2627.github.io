@@ -5,7 +5,7 @@ import worker from "../backend/worker.js";
 const origin = "https://classxiic2627.github.io";
 let sequence = 0;
 
-function setup({ driveStatus = 204 } = {}) {
+function setup({ driveStatus = 204, role = "admin" } = {}) {
   sequence += 1;
   const order = [];
   let d1DeleteCount = 0;
@@ -23,7 +23,7 @@ function setup({ driveStatus = 204 } = {}) {
               first: async () => {
                 if (sql.includes("FROM sessions s JOIN users")) {
                   return {
-                    id: 1, username: "admin", display_name: "Admin", role: "admin",
+                    id: 1, username: role === "admin" ? "admin" : "member", display_name: role === "admin" ? "Admin" : "Member", role,
                     disabled: 0, must_change_password: 0,
                     expires_at: Math.floor(Date.now() / 1000) + 3600
                   };
@@ -75,6 +75,14 @@ test("admin deletion removes the Drive file before deleting its D1 metadata", as
   assert.equal(response.status, 200);
   assert.deepEqual(state.order, ["drive-delete", "d1-delete"]);
   assert.equal(state.d1DeleteCount, 1);
+});
+
+test("member cannot delete published media through the admin-only route", async () => {
+  const state = setup({ role: "member" });
+  const response = await worker.fetch(deleteRequest(), state.env);
+  assert.equal(response.status, 403);
+  assert.deepEqual(state.order, []);
+  assert.equal(state.d1DeleteCount, 0);
 });
 
 test("Drive deletion failure preserves D1 metadata so an administrator can retry", async () => {
