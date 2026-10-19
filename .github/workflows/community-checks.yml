@@ -138,4 +138,19 @@ jobs:
               raise SystemExit("Email uniqueness is not case-insensitive.")
 
           print(f"Schema and initial migration match: {len(expected)} expected tables and core constraints validated.")
+
+          wrangler_template = Path("wrangler.example.toml").read_text(encoding="utf-8")
+          required_config = [
+              'ALLOWED_ORIGIN = "https://REPLACE_WITH_APPROVED_STAGING_ORIGIN"',
+              'crons = ["17 3 * * *"]',
+              'binding = "DB"',
+              'binding = "MEDIA"',
+              'migrations_dir = "backend/migrations"',
+              'REPLACE_WITH_VERIFIED_STAGING_D1_DATABASE_ID',
+              'REPLACE_WITH_APPROVED_STAGING_R2_BUCKET',
+          ]
+          missing_config = [value for value in required_config if value not in wrangler_template]
+          if missing_config:
+              raise SystemExit(f"Wrangler staging template is missing required safety/config entries: {missing_config}")
+          print("Wrangler staging template contains required placeholders and scheduled-cleanup declaration.")
           PY
