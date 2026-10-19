@@ -192,8 +192,6 @@ async function handle(request, env) {
       fail("Not authorized.", 401);
     }
     await clearFailedAttempts(env, attemptKey);
-    const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first();
-    if (count.n > 0) fail("Setup has already been completed. Rotate the setup secret and remove it when finished.", 409);
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
     const adminUsername = normalizeUsername(body.adminUsername);
@@ -201,9 +199,14 @@ async function handle(request, env) {
     const adminPassword = body.adminPassword;
     if (!validPassword(adminPassword)) fail("Admin password must be at least 12 non-blank characters.");
     const adminHash = await passwordHash(adminPassword);
-    // One-time setup creates only the first administrator. Student accounts are provisioned individually.
-    await env.DB.prepare("INSERT INTO users(username,email,display_name,role,password_hash,must_change_password) VALUES(?,?,?,?,?,0)")
-      .bind(adminUsername, adminEmail, cleanText(body.adminDisplayName || "Class Archive Admin", 100, "Admin display name", true), "admin", adminHash.salt + "$" + adminHash.hash).run();
+    // A single conditional INSERT makes one-time initialization atomic under D1's serialized writes.
+    const result = await env.DB.prepare(
+      "INSERT INTO users(username,email,display_name,role,password_hash,must_change_password) " +
+      "SELECT ?,?,?,?, ?,0 WHERE NOT EXISTS (SELECT 1 FROM users)"
+    ).bind(adminUsername, adminEmail, cleanText(body.adminDisplayName || "Class Archive Admin", 100, "Admin display name", true), "admin", adminHash.salt + "$" + adminHash.hash).run();
+    if (Number(result.meta?.changes || 0) !== 1) {
+      fail("Setup has already been completed. Rotate the setup secret and remove it when finished.", 409);
+    }
     return json({ok:true, message:"Administrator initialized. Create student accounts from the admin desk and rotate/remove SETUP_SECRET."}, 201, env.ALLOWED_ORIGIN);
   }
   if (request.method === "POST" && path === "/api/member/login") return login(request, env, "member");
@@ -235,25 +238,6 @@ async function handle(request, env) {
       env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id)
     ]);
     return json({ok:true, message:"Password changed. All sessions were revoked; please sign in again."}, 200, env.ALLOWED_ORIGIN);
-  }
-
-  if (request.method === "POST" && path === "/api/admin/member-password") {
-    const admin = await auth(request, env, "admin");
-    await requireChangedPassword(admin);
-    const body = await readJson(request);
-    if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
-    if (!validPassword(body.newPassword)) fail("The new class upload password must be at least 12 characters and cannot be blank.");
-    const member = await env.DB.prepare(
-      "SELECT id FROM users WHERE username=? AND role='member'"
-    ).bind("class-members").first();
-    if (!member) fail("Class member account not found.", 404);
-    const h = await passwordHash(body.newPassword);
-    await env.DB.batch([
-      env.DB.prepare("UPDATE users SET password_hash=?,must_change_password=0,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?")
-        .bind(h.salt + "$" + h.hash, member.id),
-      env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(member.id)
-    ]);
-    return json({ok:true, message:"Class upload password rotated. Share it with members through a trusted class channel."}, 200, env.ALLOWED_ORIGIN);
   }
 
   if (request.method === "GET" && path === "/api/admin/users") {
@@ -311,11 +295,13 @@ async function handle(request, env) {
     await requireChangedPassword(admin);
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.disabled !== "boolean") fail("Provide disabled as true or false.");
-    const result = await env.DB.prepare(
+    const update = env.DB.prepare(
       "UPDATE users SET disabled=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND role='member'"
-    ).bind(body.disabled ? 1 : 0,statusId).run();
-    if (!result.meta?.changes) fail("Student account not found.",404);
-    if (body.disabled) await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(statusId).run();
+    ).bind(body.disabled ? 1 : 0,statusId);
+    const statements = [update];
+    if (body.disabled) statements.push(env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(statusId));
+    const results = await env.DB.batch(statements);
+    if (!Number(results?.[0]?.meta?.changes || 0)) fail("Student account not found.",404);
     return json({ok:true,message:body.disabled?"Account disabled and sessions revoked.":"Account re-enabled."},200,env.ALLOWED_ORIGIN);
   }
   const resetId = accountIdFromPath(path, "reset-password");
@@ -325,11 +311,12 @@ async function handle(request, env) {
     const body = await readJson(request);
     if (!body || typeof body !== "object" || Array.isArray(body) || !validPassword(body.temporaryPassword)) fail("Temporary password must be at least 12 non-blank characters.");
     const password = await passwordHash(body.temporaryPassword);
-    const result = await env.DB.prepare(
-      "UPDATE users SET password_hash=?,must_change_password=1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND role='member'"
-    ).bind(password.salt+"$"+password.hash,resetId).run();
-    if (!result.meta?.changes) fail("Student account not found.",404);
-    await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(resetId).run();
+    const results = await env.DB.batch([
+      env.DB.prepare("UPDATE users SET password_hash=?,must_change_password=1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=? AND role='member'")
+        .bind(password.salt+"$"+password.hash,resetId),
+      env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(resetId)
+    ]);
+    if (!Number(results?.[0]?.meta?.changes || 0)) fail("Student account not found.",404);
     return json({ok:true,message:"Temporary password reset and all sessions revoked. Share it privately."},200,env.ALLOWED_ORIGIN);
   }
   const revokeId = accountIdFromPath(path, "revoke-sessions");
