@@ -216,9 +216,11 @@ async function handle(request, env) {
     }
     await clearFailedAttempts(env, attemptKey);
     const h = await passwordHash(body.newPassword);
-    await env.DB.prepare("UPDATE users SET password_hash=?,must_change_password=0,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?")
-      .bind(h.salt + "$" + h.hash, user.id).run();
-    await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id).run();
+    await env.DB.batch([
+      env.DB.prepare("UPDATE users SET password_hash=?,must_change_password=0,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?")
+        .bind(h.salt + "$" + h.hash, user.id),
+      env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id)
+    ]);
     return json({ok:true, message:"Password changed. Please sign in again."}, 200, env.ALLOWED_ORIGIN);
   }
 
