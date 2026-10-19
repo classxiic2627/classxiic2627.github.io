@@ -397,6 +397,7 @@ test("disabled member sessions are rejected and removed", async () => {
     }
   };
   const response = await worker.fetch(request("/api/content", {
+    method:"POST",
     headers:{Origin:origin,Authorization:"Bearer " + "d".repeat(64)}
   }),disabledEnv);
   assert.equal(response.status,401);
