@@ -51,3 +51,12 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   auth TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
+
+-- Store only hashed IP/scope keys for short-window auth throttling.
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key_hash TEXT NOT NULL,
+  attempted_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS auth_attempts_key_time_idx ON auth_attempts(key_hash, attempted_at);
+CREATE INDEX IF NOT EXISTS auth_attempts_time_idx ON auth_attempts(attempted_at);
