@@ -65,7 +65,7 @@ Use a password manager. Do not reuse your email, school, or GitHub password. Thi
 ## Important integration notes
 
 - Frontend `community.js` sends the member login body as `{password}` and admin login as `{username,password}`; both match the API. The admin form includes a username field.
-- The frontend now provides password-change forms for both member and admin accounts. Accounts flagged with `must_change_password` must change their password before the upload/admin tools are shown. Password changes revoke that user's active sessions, so they must sign in again.
+- The admin can change their own password and rotate the shared class upload password. Members cannot self-change the shared password, preventing one member from locking out the whole class. Rotating it revokes all active member sessions; share the new password only through a trusted class channel. Accounts flagged with `must_change_password` cannot upload until the admin rotates the shared password.
 - Content is delivered through `/api/media/:id`; the frontend gallery must render these media URLs, not attempt to read private R2 objects directly.
 - The current frontend's `/api/push/subscribe` flow is not ready for production. Push delivery is not implemented and the API deliberately returns 501 instead of pretending notifications work.
 - This starter uses one shared class-member password for simplicity. If the class needs per-student access, implement individual account provisioning and reset/revocation workflows before launch.
