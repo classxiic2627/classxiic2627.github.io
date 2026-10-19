@@ -1,0 +1,23 @@
+# Local-only Worker configuration using an isolated Wrangler D1 database.
+# Copy this file to wrangler.local.toml and keep it uncommitted.
+name = "class-xii-c-community-hub-api-local"
+main = "backend/worker.js"
+compatibility_date = "2026-10-19"
+
+[vars]
+ALLOWED_ORIGIN = "http://127.0.0.1:8000"
+GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID"
+GOOGLE_DRIVE_FOLDER_ID = "REPLACE_WITH_DEDICATED_DRIVE_FOLDER_ID"
+
+[triggers]
+crons = ["17 3 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "community-hub-local"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "backend/migrations"
+
+# Put GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, and SETUP_SECRET in .dev.vars.
+# For auth-only local testing you can leave Google values unset; Drive operations
+# will fail closed until real credentials and an accessible folder are configured.
