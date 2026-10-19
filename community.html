@@ -39,14 +39,7 @@
       <p>Sign in with the class upload password to contribute a photo or video. Uploaded posts are publicly visible on this website.</p>
       <form id="memberLogin" class="community-form"><label>Class upload password<input id="memberPassword" type="password" autocomplete="current-password" required maxlength="256"></label><button class="button button-primary" type="submit">Unlock upload form</button></form>
       <p id="memberStatus" class="community-status" role="status" aria-live="polite"></p>
-      <form id="memberPasswordChange" class="community-form" hidden>
-        <h3>Change class upload password</h3>
-        <label>Current password<input id="memberCurrentPassword" type="password" autocomplete="current-password" maxlength="256" required></label>
-        <label>New password (at least 12 characters)<input id="memberNewPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
-        <label>Confirm new password<input id="memberConfirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
-        <div class="community-actions"><button class="button button-primary" type="submit">Save new password</button><button class="button button-ghost" id="cancelMemberPasswordChange" type="button">Cancel</button></div>
-      </form>
-      <div id="memberSessionActions" class="community-actions" hidden><button class="button button-ghost" id="showMemberPasswordChange" type="button">Change password</button><button class="button button-ghost" id="memberLogout" type="button">Sign out</button></div>
+      <div id="memberSessionActions" class="community-actions" hidden><button class="button button-ghost" id="memberLogout" type="button">Sign out</button></div>
       <form id="uploadForm" class="community-form" hidden>
         <label>Media type<select id="uploadType" required><option value="image">Photo</option><option value="video">Video</option></select></label>
         <label>Photo or video<input id="uploadMedia" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/ogg" required></label>
@@ -69,7 +62,14 @@
         <label>Confirm new password<input id="adminConfirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
         <div class="community-actions"><button class="button button-primary" type="submit">Save new password</button><button class="button button-ghost" id="cancelAdminPasswordChange" type="button">Cancel</button></div>
       </form>
-      <div id="adminSessionActions" class="community-actions" hidden><button id="showAdminPasswordChange" class="button button-ghost" type="button">Change password</button><button id="adminLogout" class="button button-ghost" type="button">Admin sign out</button></div>
+      <form id="adminMemberPasswordChange" class="community-form" hidden>
+        <h3>Rotate the shared class upload password</h3>
+        <p>Changing this password signs out all active class-member sessions. Share the new password only through a trusted class channel.</p>
+        <label>New class upload password (at least 12 characters)<input id="adminNewMemberPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
+        <label>Confirm new class upload password<input id="adminConfirmMemberPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
+        <div class="community-actions"><button class="button button-primary" type="submit">Rotate class password</button><button class="button button-ghost" id="cancelAdminMemberPasswordChange" type="button">Cancel</button></div>
+      </form>
+      <div id="adminSessionActions" class="community-actions" hidden><button id="showAdminPasswordChange" class="button button-ghost" type="button">Change admin password</button><button id="showAdminMemberPasswordChange" class="button button-ghost" type="button">Rotate class upload password</button><button id="adminLogout" class="button button-ghost" type="button">Admin sign out</button></div>
       <div id="adminArea" hidden>
         <h3>Published posts</h3><div id="adminItems"></div>
         <h3>Post an announcement</h3>
