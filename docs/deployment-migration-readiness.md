@@ -1,8 +1,8 @@
 # Deployment and D1 Migration Readiness
 
 **Status: BLOCKED — review only; not deployment approval.**  
-**Reviewed feature head:** `e8e9149b3fd5cd629241375935c81b9898b275d8`  
-**Exact-head Actions run:** [39289371208](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289371208) — successful, including the local D1 account-flow smoke test  
+**Reviewed feature head:** `11db685d955c39460fe620e6b443d8f94d3aa731`  
+**Exact-head Actions run:** [39289710333](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289710333) — successful, including the local D1 account-flow smoke test  
 **Code PR:** [#1 — Build the Community Hub API and secure upload foundation](https://github.com/classxiic2627/classxiic2627.github.io/pull/1)  
 **Readiness PR:** [#2 — Add deployment and D1 migration readiness review](https://github.com/classxiic2627/classxiic2627.github.io/pull/2)
 
@@ -12,14 +12,14 @@ This document is an evidence checklist. It does not authorize merging, deploymen
 
 The owner narrowed the deliverable to **add a login/account system to the existing site and use Google Drive for new uploaded media**, without rebuilding the existing website or changing unrelated features.
 
-At reviewed feature head `e8e9149b3fd5cd629241375935c81b9898b275d8`:
+At reviewed feature head `11db685d955c39460fe620e6b443d8f94d3aa731`:
 
-- GitHub Actions run [39289371208](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289371208) passed **71/71 automated tests**, JavaScript syntax checks, DOM-reference validation, SQLite schema/initial-migration parity, local/staging Wrangler TOML validation, and a new local D1 integration smoke test.
+- GitHub Actions run [39289710333](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289710333) passed **71/71 automated tests**, JavaScript syntax checks, DOM-reference validation, SQLite schema/initial-migration parity, local/staging Wrangler TOML validation, and a new local D1 integration smoke test.
 - The Worker implements individual admin/member accounts, one-time CLI-only admin setup, password hashing, session expiry/revocation, temporary-password change, admin member management, announcements, and upload/read/delete routes.
 - `backend/google-drive.js` is the canonical Google Drive adapter. It uses server-side OAuth refresh-token credentials, keeps Drive files private, proxies file content through the Worker, stores Drive file IDs in D1 metadata, and supports health/upload/read/delete operations.
 - `tests/google-drive-adapter.test.mjs` and `tests/google-drive-delete.test.mjs` exercise the Worker routes with fake Google API responses and mock D1 objects. These are automated contract/regression tests, **not** real Google Drive or live D1 verification.
-- `scripts/local-smoke-test.mjs` and `wrangler.local.example.toml` provide a repeatable local D1 account-flow test. In run [39289371208](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289371208), CI applied migrations to Wrangler's isolated local D1, started a local Worker, and passed setup, admin login, member creation, temporary-password login, password change, relogin, rejection of the old password, and test-member disablement. **Local D1 account flow is verified in CI.** The optional real Drive upload/read/delete test was skipped because no real credentials/folder were supplied.
-- `community.html` keeps the `community-api-base` meta value blank. The published frontend is therefore **not connected to a deployed Worker**.
+- `scripts/local-smoke-test.mjs` and `wrangler.local.example.toml` provide a repeatable local D1 account-flow test. In run [39289710333](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289710333), CI applied migrations to Wrangler's isolated local D1, started a local Worker, and passed setup, admin login, member creation, temporary-password login, password change, relogin, rejection of the old password, and test-member disablement. **Local D1 account flow is verified in CI.** The optional real Drive upload/read/delete test was skipped because no real credentials/folder were supplied.
+- `community.html` keeps the `community-api-base` meta value blank. The published frontend is therefore **not connected to a deployed Worker**. For easier local demonstration, `community.js` falls back to `http://127.0.0.1:8787` only when served over plain HTTP from `localhost`, `127.0.0.1`, or `[::1]`; the published hostname does not match this fallback.
 - No approved Google OAuth client/refresh token/folder, deployed staging Worker, or verified staging D1 was supplied or tested in this review. No real Drive upload/read/delete has been demonstrated.
 
 **Evidence labels:** automated CI = verified at the exact head above; isolated local D1 account-flow smoke = verified in CI; real Google Drive upload/read/delete = not verified (the opt-in real-Drive test was skipped); Cloudflare staging = not verified; production = not approved.
@@ -37,7 +37,7 @@ At reviewed feature head `e8e9149b3fd5cd629241375935c81b9898b275d8`:
 
 ### Local demo and staging
 
-- [x] The documented local D1 account-flow smoke passed in Actions run [39289371208](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289371208) using Wrangler's isolated local D1 and `npm run smoke:local`. The run verified setup/admin login/member creation/temporary-password gate/password change/relogin/old-password rejection and test-account disabling. This is not a deployed staging test and does not verify the owner's workstation.
+- [x] The documented local D1 account-flow smoke passed in Actions run [39289710333](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289710333) using Wrangler's isolated local D1 and `npm run smoke:local`. The run verified setup/admin login/member creation/temporary-password gate/password change/relogin/old-password rejection and test-account disabling. This is not a deployed staging test and does not verify the owner's workstation.
 - [ ] Record real Google Drive verification separately. The CI smoke test deliberately skipped external Drive access; health and media operations remain fail-closed until authorized OAuth credentials and folder access are configured.
 - [ ] Only after explicit owner approval, prepare isolated staging D1 and a dedicated Drive folder/account. Configure the Worker secrets server-side and set the exact approved static-site origin in `ALLOWED_ORIGIN`.
 - [ ] Set the frontend `community-api-base` meta value only to a verified Worker HTTPS origin after staging checks. Do not guess the URL or publish localhost.
@@ -72,8 +72,8 @@ Before any approved migration:
 
 ## 5. Release checklist
 
-- [x] Exact-head automated CI passed at `e8e9149b3fd5cd629241375935c81b9898b275d8`: run [39289371208](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289371208), 71/71 automated tests plus syntax, DOM, schema/migration, and Wrangler template checks.
-- [x] Local D1 smoke script passed in CI run [39289371208](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289371208); real Google Drive remains unverified.
+- [x] Exact-head automated CI passed at `11db685d955c39460fe620e6b443d8f94d3aa731`: run [39289710333](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289710333), 71/71 automated tests plus syntax, DOM, schema/migration, and Wrangler template checks.
+- [x] Local D1 smoke script passed in CI run [39289710333](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289710333); real Google Drive remains unverified.
 - [ ] Verify real Google OAuth and Drive folder access using a dedicated test account/folder.
 - [ ] Resolve public-media visibility and class-photo consent/removal policy.
 - [ ] Select and implement an owner-approved aggregate upload quota.
