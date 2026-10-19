@@ -214,6 +214,7 @@ function authenticatedEnv(user) {
     DB: {
       prepare(sql) {
         return {
+          first: async () => ({ ok: 1 }),
           bind() {
             return {
               first: async () => user,
@@ -526,8 +527,8 @@ test("account management remains available without Google Drive configuration", 
   assert.deepEqual(await response.json(), { items: [] });
 
   const health = await worker.fetch(request("/api/health"), accountEnv);
-  assert.equal(health.status, 503);
-  assert.deepEqual(await health.json(), { error: "Internal server error." });
+  assert.equal(health.status, 200);
+  assert.deepEqual(await health.json(), {ok:true,service:"class-archive-api"});
 });
 
 test("upload fails closed with 503 when Google Drive OAuth is not configured", async () => {
