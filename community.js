@@ -69,11 +69,9 @@
       $("memberSessionActions").hidden = false;
       $("memberLogin").hidden = true;
       $("memberPassword").value = "";
-      $("memberPasswordChange").hidden = !memberMustChangePassword;
-      $("cancelMemberPasswordChange").hidden = memberMustChangePassword;
       $("uploadForm").hidden = memberMustChangePassword;
       status("memberStatus", memberMustChangePassword
-        ? "For account safety, change the temporary password before uploading."
+        ? "The shared class upload password needs an administrator reset before uploading. Please contact the class archive administrator."
         : "Signed in. Posts are visible to visitors of the class archive.");
     } catch (error) { status("memberStatus", error.message); }
   });
@@ -83,47 +81,9 @@
     memberMustChangePassword = false;
     $("memberSessionActions").hidden = true;
     $("uploadForm").hidden = true;
-    $("memberPasswordChange").hidden = true;
     $("memberLogin").hidden = false;
     $("uploadForm").reset();
-    $("memberPasswordChange").reset();
     status("memberStatus", "Signed out.");
-  });
-  $("showMemberPasswordChange").addEventListener("click", () => {
-    $("memberPasswordChange").hidden = false;
-    $("cancelMemberPasswordChange").hidden = false;
-  });
-  $("cancelMemberPasswordChange").addEventListener("click", () => {
-    if (memberMustChangePassword) return;
-    $("memberPasswordChange").reset();
-    $("memberPasswordChange").hidden = true;
-  });
-  $("memberPasswordChange").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const currentPassword = $("memberCurrentPassword").value;
-    const newPassword = $("memberNewPassword").value;
-    if (newPassword !== $("memberConfirmPassword").value) {
-      status("memberStatus", "The new password and confirmation do not match.");
-      return;
-    }
-    if (newPassword.length < 12) {
-      status("memberStatus", "Choose a password with at least 12 characters.");
-      return;
-    }
-    try {
-      await api("/api/account/password", {
-        method:"POST",
-        body:JSON.stringify({currentPassword, newPassword})
-      }, memberToken);
-      memberToken = "";
-      memberMustChangePassword = false;
-      $("memberSessionActions").hidden = true;
-      $("memberPasswordChange").reset();
-      $("memberPasswordChange").hidden = true;
-      $("uploadForm").hidden = true;
-      $("memberLogin").hidden = false;
-      status("memberStatus", "Password changed. Please sign in again with your new password.");
-    } catch (error) { status("memberStatus", error.message); }
   });
   $("uploadForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -153,6 +113,8 @@
       adminToken = data.token;
       adminMustChangePassword = !!data.mustChangePassword;
       $("adminSessionActions").hidden = false;
+      $("showAdminMemberPasswordChange").hidden = adminMustChangePassword;
+      $("adminMemberPasswordChange").hidden = true;
       $("adminLogin").hidden = true;
       $("adminPassword").value = "";
       $("adminPasswordChange").hidden = !adminMustChangePassword;
@@ -226,6 +188,34 @@
       status("adminStatus", "Password changed. Please sign in again with your new password.");
     } catch (error) { status("adminStatus", error.message); }
   });
+  $("showAdminMemberPasswordChange").addEventListener("click", () => {
+    $("adminMemberPasswordChange").hidden = false;
+  });
+  $("cancelAdminMemberPasswordChange").addEventListener("click", () => {
+    $("adminMemberPasswordChange").reset();
+    $("adminMemberPasswordChange").hidden = true;
+  });
+  $("adminMemberPasswordChange").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const newPassword = $("adminNewMemberPassword").value;
+    if (newPassword !== $("adminConfirmMemberPassword").value) {
+      status("adminStatus", "The new class upload password and confirmation do not match.");
+      return;
+    }
+    if (newPassword.length < 12) {
+      status("adminStatus", "Choose a class upload password with at least 12 characters.");
+      return;
+    }
+    try {
+      const data = await api("/api/admin/member-password", {
+        method:"POST",
+        body:JSON.stringify({newPassword})
+      }, adminToken);
+      $("adminMemberPasswordChange").reset();
+      $("adminMemberPasswordChange").hidden = true;
+      status("adminStatus", data.message || "Class upload password rotated.");
+    } catch (error) { status("adminStatus", error.message); }
+  });
   $("announcementForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -244,6 +234,8 @@
     $("adminSessionActions").hidden = true;
     $("adminPasswordChange").hidden = true;
     $("adminPasswordChange").reset();
+    $("adminMemberPasswordChange").hidden = true;
+    $("adminMemberPasswordChange").reset();
     $("adminArea").hidden = true;
     $("adminLogin").hidden = false;
     status("adminStatus", "Signed out.");
