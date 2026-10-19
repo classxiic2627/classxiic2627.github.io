@@ -282,7 +282,7 @@ async function handle(request, env) {
       admin = await auth(request, env, "admin");
     } catch (error) {
       // Preserve expected auth failures, but report an unavailable D1 session lookup as dependency failure.
-      if (Number(error?.status)) throw error;
+      if ([401, 403, 429, 503].includes(Number(error?.status))) throw error;
       fail("Storage health check failed.", 503);
     }
     await requireChangedPassword(admin);
