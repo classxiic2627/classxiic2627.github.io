@@ -150,7 +150,7 @@
     if (!token) { status(targetStatus, "Sign in and change your temporary password before uploading."); return; }
     const file = $("uploadMedia").files[0];
     if (!file) { status(targetStatus, "Choose a photo or video first."); return; }
-    if (file.size > 50 * 1024 * 1024) { status(targetStatus, "Media must be 50 MB or smaller."); return; }
+    if (file.size > 50 * 1024 * 1024) { status(targetStatus, "Media must be 50 MiB or smaller."); return; }
     const form = new FormData();
     form.set("type", $("uploadType").value);
     form.set("title", $("uploadTitle").value.trim());
