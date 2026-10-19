@@ -37,6 +37,45 @@ At reviewed feature head `11db685d955c39460fe620e6b443d8f94d3aa731`:
 
 ### Local demo and staging
 
+#### Run the login + real local D1 demo on Windows
+
+This is a local-only demo of the existing site UI and Worker backed by Wrangler's isolated local D1 database. It does not require a Cloudflare account, remote database, Google credentials, or paid resources. Use disposable demo credentials only.
+
+**Terminal 1 — prepare and start the local API** (from the repository root, on Node.js 22 or newer):
+
+```powershell
+Copy-Item wrangler.local.example.toml wrangler.local.toml
+npm install --no-save --package-lock=false wrangler@4
+Set-Content .dev.vars 'SETUP_SECRET="Local-Demo-Setup-Secret-2026-Change-Me"'
+npx wrangler d1 migrations apply community-hub-local --local --config wrangler.local.toml
+npx wrangler dev --local --config wrangler.local.toml --ip 127.0.0.1 --port 8787
+```
+
+Leave that terminal running. The local config uses a separate local D1 database and has no remote database ID. Keep `wrangler.local.toml` and `.dev.vars` uncommitted.
+
+**Terminal 2 — initialize the disposable demo admin and verify the account flow**:
+
+```powershell
+$env:LOCAL_API_URL = "http://127.0.0.1:8787"
+$env:LOCAL_SETUP_SECRET = "Local-Demo-Setup-Secret-2026-Change-Me"
+$env:LOCAL_ADMIN_USERNAME = "demo-admin"
+$env:LOCAL_ADMIN_EMAIL = "demo-admin@example.test"
+$env:LOCAL_ADMIN_PASSWORD = "Local-Demo-Admin-Password-123!"
+npm run smoke:local
+```
+
+The smoke script prints each successful step. It verifies first-admin setup (or checks the existing demo admin on a repeat run), admin login, student creation, temporary-password login, forced password change, successful re-login, rejection of the old temporary password, and disabling the generated test student.
+
+**Terminal 3 — serve the existing website UI**:
+
+```powershell
+python -m http.server 8000
+```
+
+Open [http://127.0.0.1:8000/community.html](http://127.0.0.1:8000/community.html). Sign in to the admin desk with the disposable demo-admin credentials above. Create a separate demo student from the admin desk, then test the student login and required temporary-password change. You can also publish an announcement and confirm it appears in the public list; both use the local D1 database. Stop the local Worker and static server with Ctrl+C when finished.
+
+**Known local-demo limits:** the real Google Drive upload/read/delete check is opt-in and will fail closed without owner-configured Google OAuth credentials and a dedicated test folder. Do not treat a successful account-flow smoke test as proof of Drive access or Cloudflare staging. The published site remains disconnected until a verified, approved Worker URL is configured.
+
 - [x] The documented local D1 account-flow smoke passed in Actions run [39289710333](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39289710333) using Wrangler's isolated local D1 and `npm run smoke:local`. The run verified setup/admin login/member creation/temporary-password gate/password change/relogin/old-password rejection and test-account disabling. This is not a deployed staging test and does not verify the owner's workstation.
 - [ ] Record real Google Drive verification separately. The CI smoke test deliberately skipped external Drive access; health and media operations remain fail-closed until authorized OAuth credentials and folder access are configured.
 - [ ] Only after explicit owner approval, prepare isolated staging D1 and a dedicated Drive folder/account. Configure the Worker secrets server-side and set the exact approved static-site origin in `ALLOWED_ORIGIN`.
