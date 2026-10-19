@@ -39,7 +39,14 @@
       <p>Sign in with the individual account provided by your class administrator to contribute a photo or video. Uploaded posts are publicly visible on this website.</p>
       <form id="memberLogin" class="community-form"><label>Username<input id="memberUsername" type="text" autocomplete="username" maxlength="64" required></label><label>Password<input id="memberPassword" type="password" autocomplete="current-password" required maxlength="256"></label><button class="button button-primary" type="submit">Sign in</button></form>
       <p id="memberStatus" class="community-status" role="status" aria-live="polite"></p>
-      <div id="memberSessionActions" class="community-actions" hidden><button class="button button-ghost" id="memberLogout" type="button">Sign out</button></div>
+      <div id="memberSessionActions" class="community-actions" hidden><button class="button button-ghost" id="showMemberPasswordChange" type="button">Change password</button><button class="button button-ghost" id="memberLogout" type="button">Sign out</button></div>
+      <form id="memberPasswordChange" class="community-form" hidden>
+        <h3>Change your password</h3>
+        <label>Current password<input id="memberCurrentPassword" type="password" autocomplete="current-password" maxlength="256" required></label>
+        <label>New password (at least 12 characters)<input id="memberNewPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
+        <label>Confirm new password<input id="memberConfirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
+        <div class="community-actions"><button class="button button-primary" type="submit">Save new password</button><button class="button button-ghost" id="cancelMemberPasswordChange" type="button">Cancel</button></div>
+      </form>
       <form id="uploadForm" class="community-form" hidden>
         <label>Media type<select id="uploadType" required><option value="image">Photo</option><option value="video">Video</option></select></label>
         <label>Photo or video<input id="uploadMedia" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/ogg" required></label>
