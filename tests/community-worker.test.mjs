@@ -1186,6 +1186,40 @@ test("rejects null announcement payloads as client errors", async () => {
   assert.deepEqual(await response.json(), { error: "Invalid request body." });
 });
 
+test("rejects oversized JSON bodies when Content-Length is absent", async () => {
+  const body = "x".repeat(1024 * 1024 + 1);
+  const req = new Request("https://api.example.test/api/member/login", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "CF-Connecting-IP": "203.0.113.60",
+      "Content-Type": "application/json"
+    },
+    body
+  });
+  assert.equal(req.headers.get("content-length"), null);
+  const response = await worker.fetch(req, env);
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: "Internal server error." });
+});
+
+test("rejects oversized multipart bodies when Content-Length is absent before parsing", async () => {
+  const body = new Uint8Array(16 * 1024 * 1024 + 1);
+  const req = new Request("https://api.example.test/api/content", {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      Authorization: "Bearer " + "q".repeat(64),
+      "Content-Type": "multipart/form-data; boundary=community-test"
+    },
+    body
+  });
+  assert.equal(req.headers.get("content-length"), null);
+  const response = await worker.fetch(req, authenticatedEnv(memberSession));
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: "Internal server error." });
+});
+
 test("rejects malformed multipart upload bodies as client errors", async () => {
   const response = await worker.fetch(new Request("https://api.example.test/api/content", {
     method: "POST",
