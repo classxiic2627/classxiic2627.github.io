@@ -78,7 +78,7 @@ Prerequisites: Node.js 22+, npm, and Wrangler 4. Start from a clean checkout of 
    ```sh
    python -m http.server 8000 --bind 127.0.0.1
    ```
-5. Open the static site at `http://127.0.0.1:8000/community.html`. On plain-HTTP `localhost`, `127.0.0.1`, or `[::1]` only, the existing frontend automatically defaults to the local Worker at `http://127.0.0.1:8787`. The committed `community-api-base` meta value remains blank, and the published site does not use the localhost fallback.
+5. Open the static site at `http://127.0.0.1:8000/community.html`. On plain-HTTP `127.0.0.1` only, the existing frontend automatically defaults to the local Worker at `http://127.0.0.1:8787` (matching the local CORS origin). The committed `community-api-base` meta value remains blank, and the published site does not use the localhost fallback.
 6. Initialize the first admin from a trusted terminal, not the browser. For example, use PowerShell and keep the secret/password in local environment variables:
    ```powershell
    $env:SETUP_SECRET = Read-Host "Local setup secret"
