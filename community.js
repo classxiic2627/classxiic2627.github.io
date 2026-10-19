@@ -187,7 +187,9 @@
           await refreshAdmin();
           await loadPublicContent();
           status("adminStatus", "Post deleted.");
-        } catch (error) { status("adminStatus", error.message); }
+        } catch (error) {
+          status("adminStatus", "Delete did not complete. The item remains in the admin list so you can retry cleanup. " + error.message);
+        }
       });
       row.append(info, del);
       list.append(row);
