@@ -2219,3 +2219,7 @@ footer,
         max-width: 100%;
     }
 }
+
+.class-views-section {
+  white-space: pre-line;
+}
