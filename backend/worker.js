@@ -655,6 +655,13 @@ async function handle(request, env) {
         await env.DB.prepare(
           "UPDATE upload_reservations SET state='retryable',drive_file_id=NULL,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND key_hash=? AND state='processing'"
         ).bind(user.id, keyHash).run().catch(() => {});
+      } else {
+        // The Drive object may still exist. Keep it discoverable by a later
+        // same-key reconciliation rather than leaving an ambiguous processing
+        // reservation that every safe retry must refuse.
+        await env.DB.prepare(
+          "UPDATE upload_reservations SET state='reconciliation_required',drive_file_id=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND key_hash=? AND state='processing'"
+        ).bind(driveFileId, user.id, keyHash).run().catch(() => {});
       }
       throw error;
     }
