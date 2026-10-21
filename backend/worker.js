@@ -55,6 +55,10 @@ function randomBytes(size = 32) { const bytes = new Uint8Array(size); crypto.get
 function toB64(bytes) { let binary = ""; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); }
 function fromB64(value) { return Uint8Array.from(atob(value), c => c.charCodeAt(0)); }
 async function digest(value) { return toB64(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value)))); }
+async function digestFile(file) {
+  const bytes = await file.arrayBuffer();
+  return toB64(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)));
+}
 function constantTimeEqual(left, right) {
   const a = encoder.encode(left), b = encoder.encode(right);
   let diff = a.length ^ b.length;
@@ -515,8 +519,7 @@ async function handle(request, env) {
     // across retries. Only a hash of that key is stored in D1.
     const clientKey = suppliedKey || id();
     const keyHash = await digest("content-upload:" + user.id + ":" + clientKey);
-    const fileBytes = await file.arrayBuffer();
-    const fileHash = toB64(new Uint8Array(await crypto.subtle.digest("SHA-256", fileBytes)));
+    const fileHash = await digestFile(file);
     const payloadHash = await digest(JSON.stringify({
       type, title, caption, mime, size:file.size, fileHash
     }));
