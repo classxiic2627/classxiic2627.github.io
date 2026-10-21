@@ -73,7 +73,7 @@ async function encryptPayload(subscription, payload) {
   header[4] = serverPublic.length;
   return concat(salt,header,serverPublic,ciphertext);
 }
-export async function sendWebPush(subscription,payload,env,fetchImpl=fetch) {
+export async function sendWebPush(subscription,payload,env,fetchImpl=fetch,timeoutMs=5000) {
   const endpoint = new URL(subscription.endpoint);
   if (endpoint.protocol !== "https:") throw new Error("Push endpoint must use HTTPS.");
   const host = endpoint.hostname;
@@ -91,7 +91,7 @@ export async function sendWebPush(subscription,payload,env,fetchImpl=fetch) {
   const response = await fetchImpl(endpoint.href,{
     method:"POST",
     redirect:"manual",
-    signal:AbortSignal.timeout(5000),
+    signal:AbortSignal.timeout(timeoutMs),
     headers:{
       Authorization:"vapid t="+token+", k="+env.VAPID_PUBLIC_KEY,
       "Content-Encoding":"aes128gcm",
