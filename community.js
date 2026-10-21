@@ -389,11 +389,22 @@
   $("announcementForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
-      await api("/api/admin/announcements", {method:"POST", body:JSON.stringify({
+      const published = await api("/api/admin/announcements", {method:"POST", body:JSON.stringify({
         title:$("announcementTitle").value.trim(), body:$("announcementBody").value.trim()
       })}, adminToken);
       $("announcementForm").reset();
-      status("adminStatus", "Announcement published. Push notifications are not active yet.");
+      const delivery = published.notifications;
+      let message = "Announcement published.";
+      if (!delivery || !delivery.configured) message += " Push delivery is not configured on the server.";
+      else if (delivery.lookupFailed) message += " The announcement is published, but subscription lookup failed; no delivery attempts were made.";
+      else if (!delivery.total) message += " No registered push subscriptions yet.";
+      else {
+        message += " Provider accepted: " + delivery.sent + "; expired endpoints: " + (delivery.expired || 0) + "; failed attempts: " + delivery.failed + ".";
+        if (delivery.cleanupFailed) message += " Expired-endpoint cleanup failed; an administrator should review it.";
+        if (delivery.skipped) message += " " + delivery.skipped + " of " + delivery.total + " registered devices were skipped by the per-announcement safety cap of 40.";
+        message += " Provider acceptance does not guarantee a device displayed the notification.";
+      }
+      status("adminStatus", message);
       await loadPublicContent();
     } catch (error) { status("adminStatus", error.message); }
   });
@@ -410,8 +421,57 @@
     status("adminStatus", "Signed out.");
   });
 
-  $("subscribeButton").addEventListener("click", () => {
-    status("pushStatus", "Push notifications are not implemented yet, so this button will not request browser permissions.");
+  function decodeApplicationServerKey(value) {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+    return Uint8Array.from(binary, character => character.charCodeAt(0));
+  }
+  $("subscribeButton").addEventListener("click", async () => {
+    const token = uploadToken();
+    if (!token) {
+      status("pushStatus", "Sign in with your member or administrator account and finish any required password change first.");
+      return;
+    }
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      status("pushStatus", "This browser does not support web push notifications.");
+      return;
+    }
+    try {
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      let subscription = await registration.pushManager.getSubscription();
+      if (subscription && $("subscribeButton").textContent === "Disable notifications on this device") {
+        await api("/api/push/subscribe", {
+          method:"DELETE",
+          body:JSON.stringify({endpoint:subscription.endpoint})
+        }, token);
+        await subscription.unsubscribe();
+        status("pushStatus", "Notifications disabled on this device.");
+        $("subscribeButton").textContent = "Enable notifications on this device";
+        return;
+      }
+      const keyData = await api("/api/push/public-key");
+      if (!keyData.publicKey) throw new Error("Push notifications are not configured on the server yet.");
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") throw new Error("Notification permission was not granted.");
+      if (!subscription) subscription = await registration.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:decodeApplicationServerKey(keyData.publicKey)
+      });
+      await api("/api/push/subscribe", {
+        method:"POST",
+        body:JSON.stringify(subscription.toJSON())
+      }, token);
+      status("pushStatus", "Notifications enabled on this device for class announcements.");
+      $("subscribeButton").textContent = "Disable notifications on this device";
+    } catch (error) {
+      status("pushStatus", error.message);
+    }
   });
+  if ("serviceWorker" in navigator && "PushManager" in window) {
+    navigator.serviceWorker.getRegistration().then(async registration => {
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription) $("subscribeButton").textContent = "Disable notifications on this device";
+    }).catch(() => {});
+  }
   loadPublicContent();
 })();

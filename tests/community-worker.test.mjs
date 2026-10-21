@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { webcrypto } from "node:crypto";
 import { runInNewContext } from "node:vm";
 import worker from "../backend/worker.js";
 
@@ -2073,4 +2074,355 @@ test("admin with a temporary password cannot access account management before ch
   assert.deepEqual(await response.json(), {
     error: "Change your temporary password before continuing."
   });
+});
+
+
+test("announcement push fan-out is bounded and reports delivery results", async () => {
+  const vapid = await webcrypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);
+  const publicRaw = new Uint8Array(await webcrypto.subtle.exportKey("raw",vapid.publicKey));
+  const privateJwk = await webcrypto.subtle.exportKey("jwk",vapid.privateKey);
+  const client = await webcrypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
+  const clientRaw = new Uint8Array(await webcrypto.subtle.exportKey("raw",client.publicKey));
+  const b64url = value => Buffer.from(value).toString("base64url");
+  const subscriptions = Array.from({length:50},(_,index)=>({
+    endpoint:"https://fcm.googleapis.com/fcm/send/test-"+index,
+    p256dh:b64url(clientRaw),
+    auth:b64url(webcrypto.getRandomValues(new Uint8Array(16)))
+  }));
+  let expiredDeleteQueries=0;
+  const fanoutEnv = {
+    ...env,
+    VAPID_PUBLIC_KEY:b64url(publicRaw),
+    VAPID_PRIVATE_KEY:privateJwk.d,
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind() {
+            return {
+              first:async()=>sql.includes("COUNT(*) AS total FROM push_subscriptions")
+                ? {total:subscriptions.length}
+                : adminSession,
+              run:async()=>{
+                if (sql.includes("DELETE FROM push_subscriptions")) expiredDeleteQueries++;
+                return {success:true,meta:{changes:1}};
+              }
+            };
+          },
+          first:async()=>sql.includes("COUNT(*) AS total FROM push_subscriptions")
+            ? {total:subscriptions.length}
+            : null,
+          all:async()=>sql.includes("FROM push_subscriptions")
+            ? {results:subscriptions.slice(0,40)}
+            : {results:[]}
+        };
+      }
+    }
+  };
+  let active=0;
+  let maxActive=0;
+  let providerCalls=0;
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async (_url,init={})=>{
+    assert.equal(init.method,"POST");
+    assert.equal(init.redirect,"manual");
+    assert.ok(init.signal instanceof AbortSignal);
+    active++;
+    providerCalls++;
+    maxActive=Math.max(maxActive,active);
+    await new Promise(resolve=>setTimeout(resolve,5));
+    active--;
+    const endpoint=new URL(_url).pathname;
+    if (endpoint.endsWith("test-0")) return new Response(null,{status:410});
+    if (endpoint.endsWith("test-1")) return new Response(null,{status:503});
+    return new Response(null,{status:201});
+  };
+  let response;
+  try {
+    response=await worker.fetch(new Request("https://api.example.test/api/admin/announcements",{
+      method:"POST",
+      headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+      body:JSON.stringify({title:"Class update",body:"New announcement"})
+    }),fanoutEnv);
+  } finally {
+    globalThis.fetch=originalFetch;
+  }
+  assert.equal(response.status,201);
+  const result=await response.json();
+  assert.equal(result.notifications.total,50);
+  assert.equal(result.notifications.sent,38);
+  assert.equal(result.notifications.failed,1);
+  assert.equal(result.notifications.expired,1);
+  assert.equal(result.notifications.skipped,10,"the per-announcement cap must report unattempted devices");
+  assert.equal(providerCalls,40,"one announcement may attempt at most 40 provider requests");
+  assert.equal(expiredDeleteQueries,1,"expired subscriptions must be removed in one batched D1 statement");
+  assert.equal(maxActive,8,"provider requests must be sent in batches of eight or fewer");
+});
+
+test("push public key is unavailable until server-side VAPID is configured", async () => {
+  const response = await worker.fetch(request("/api/push/public-key", {
+    headers:{Origin:origin}
+  }), env);
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{publicKey:null});
+});
+
+test("push subscription registration requires authentication and server configuration", async () => {
+  const unauthenticated = await worker.fetch(request("/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,"Content-Type":"application/json"}
+  }), env);
+  assert.equal(unauthenticated.status,401);
+
+  const unconfigured = await worker.fetch(request("/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"}
+  }), authenticatedEnv(memberSession));
+  assert.equal(unconfigured.status,503);
+  assert.deepEqual(await unconfigured.json(),{error:"Internal server error."});
+});
+
+test("push subscription cannot be reassigned from another account", async () => {
+  const publicBytes = Buffer.alloc(65);
+  publicBytes[0] = 4;
+  const privateBytes = Buffer.alloc(32, 7);
+  const clientBytes = Buffer.alloc(65);
+  clientBytes[0] = 4;
+  const authBytes = Buffer.alloc(16, 9);
+  let insertAttempted=false;
+  const pushEnv = {
+    ...authenticatedEnv(memberSession),
+    VAPID_PUBLIC_KEY:publicBytes.toString("base64url"),
+    VAPID_PRIVATE_KEY:privateBytes.toString("base64url"),
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first:async()=>{
+                if (sql.includes("SELECT user_id FROM push_subscriptions")) return {user_id:99};
+                if (sql.includes("SELECT COUNT(*) AS count FROM push_subscriptions")) return {count:0};
+                return memberSession;
+              },
+              run:async()=>{
+                if (sql.includes("INSERT INTO push_subscriptions")) insertAttempted=true;
+                return sql.includes("INSERT INTO push_subscriptions")
+                  ? {success:true,meta:{changes:0}}
+                  : {success:true,meta:{changes:1}};
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({
+      endpoint:"https://fcm.googleapis.com/fcm/send/existing-endpoint",
+      keys:{p256dh:clientBytes.toString("base64url"),auth:authBytes.toString("base64url")}
+    })
+  }),pushEnv);
+  assert.equal(response.status,409);
+  assert.equal(insertAttempted,false,"the ownership guard must reject before attempting an upsert");
+  assert.deepEqual(await response.json(),{
+    error:"This browser subscription is already linked to another account. Sign in to that account and disable notifications before linking it here."
+  });
+});
+
+test("push subscription registration enforces the per-account device cap", async () => {
+  const publicBytes=Buffer.alloc(65); publicBytes[0]=4;
+  const privateBytes=Buffer.alloc(32,7);
+  const clientBytes=Buffer.alloc(65); clientBytes[0]=4;
+  const authBytes=Buffer.alloc(16,9);
+  let insertAttempted=false;
+  const pushEnv={
+    ...env,
+    VAPID_PUBLIC_KEY:publicBytes.toString("base64url"),
+    VAPID_PRIVATE_KEY:privateBytes.toString("base64url"),
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind() {
+            return {
+              first:async()=>{
+                if (sql.includes("SELECT user_id FROM push_subscriptions")) return null;
+                if (sql.includes("SELECT COUNT(*) AS count FROM push_subscriptions")) return {count:10};
+                return memberSession;
+              },
+              run:async()=>{
+                if (sql.includes("INSERT INTO push_subscriptions")) insertAttempted=true;
+                return {success:true,meta:{changes:1}};
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response=await worker.fetch(new Request("https://api.example.test/api/push/subscribe",{
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({
+      endpoint:"https://fcm.googleapis.com/fcm/send/new-endpoint",
+      keys:{p256dh:clientBytes.toString("base64url"),auth:authBytes.toString("base64url")}
+    })
+  }),pushEnv);
+  assert.equal(response.status,429);
+  assert.equal(insertAttempted,false);
+  assert.deepEqual(await response.json(),{error:"An account can register up to 10 notification devices."});
+});
+
+test("push subscription cap is atomic when concurrent registrations fill the last slot", async () => {
+  const publicBytes=Buffer.alloc(65); publicBytes[0]=4;
+  const privateBytes=Buffer.alloc(32,7);
+  const clientBytes=Buffer.alloc(65); clientBytes[0]=4;
+  const authBytes=Buffer.alloc(16,9);
+  let countCalls=0;
+  let insertSql="";
+  const pushEnv={
+    ...env,
+    VAPID_PUBLIC_KEY:publicBytes.toString("base64url"),
+    VAPID_PRIVATE_KEY:privateBytes.toString("base64url"),
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind() {
+            return {
+              first:async()=>{
+                if (sql.includes("SELECT user_id FROM push_subscriptions")) return null;
+                if (sql.includes("SELECT COUNT(*) AS count FROM push_subscriptions")) {
+                  countCalls++;
+                  return {count:countCalls===1?9:10};
+                }
+                return memberSession;
+              },
+              run:async()=>{
+                if (sql.includes("INSERT INTO push_subscriptions")) {
+                  insertSql=sql;
+                  return {success:true,meta:{changes:0}};
+                }
+                return {success:true,meta:{changes:1}};
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response=await worker.fetch(new Request("https://api.example.test/api/push/subscribe",{
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({
+      endpoint:"https://fcm.googleapis.com/fcm/send/racing-endpoint",
+      keys:{p256dh:clientBytes.toString("base64url"),auth:authBytes.toString("base64url")}
+    })
+  }),pushEnv);
+  assert.equal(response.status,429);
+  assert.match(insertSql,/WHERE \(SELECT COUNT\(\*\) FROM push_subscriptions WHERE user_id=\?\) < 10/);
+  assert.equal(countCalls,2);
+  assert.deepEqual(await response.json(),{error:"An account can register up to 10 notification devices."});
+});
+
+test("push subscription can be refreshed by its owning account", async () => {
+  const publicBytes = Buffer.alloc(65);
+  publicBytes[0] = 4;
+  const privateBytes = Buffer.alloc(32, 7);
+  const clientBytes = Buffer.alloc(65);
+  clientBytes[0] = 4;
+  const authBytes = Buffer.alloc(16, 9);
+  let insertSql = "";
+  let insertValues = [];
+  const pushEnv = {
+    ...env,
+    VAPID_PUBLIC_KEY:publicBytes.toString("base64url"),
+    VAPID_PRIVATE_KEY:privateBytes.toString("base64url"),
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first:async()=>{
+                if (sql.includes("SELECT user_id FROM push_subscriptions")) return {user_id:memberSession.id};
+                if (sql.includes("SELECT COUNT(*) AS count FROM push_subscriptions")) return {count:10};
+                return memberSession;
+              },
+              run:async()=>{
+                if (sql.includes("INSERT INTO push_subscriptions")) {
+                  insertSql=sql;
+                  insertValues=values;
+                }
+                return {success:true,meta:{changes:1}};
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({
+      endpoint:"https://fcm.googleapis.com/fcm/send/owned-endpoint",
+      keys:{p256dh:clientBytes.toString("base64url"),auth:authBytes.toString("base64url")}
+    })
+  }),pushEnv);
+  assert.equal(response.status,201);
+  assert.match(insertSql,/INSERT INTO push_subscriptions\(id,user_id,endpoint,p256dh,auth\) SELECT \?,\?,\?,\?,\?/);
+  assert.match(insertSql,/WHERE \(SELECT COUNT\(\*\) FROM push_subscriptions WHERE user_id=\?\) < 10/);
+  assert.match(insertSql,/OR EXISTS \(SELECT 1 FROM push_subscriptions WHERE endpoint=\? AND user_id=\?\)/);
+  assert.match(insertSql,/ON CONFLICT\(endpoint\) DO UPDATE SET p256dh=excluded\.p256dh,auth=excluded\.auth WHERE push_subscriptions\.user_id=excluded\.user_id/);
+  assert.equal(insertValues[1],memberSession.id);
+  assert.deepEqual(await response.json(),{ok:true});
+});
+
+
+test("announcement subscription lookup failure is not misreported as a failed provider send", async () => {
+  const vapid = await webcrypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);
+  const publicRaw = new Uint8Array(await webcrypto.subtle.exportKey("raw",vapid.publicKey));
+  const privateJwk = await webcrypto.subtle.exportKey("jwk",vapid.privateKey);
+  const lookupEnv = {
+    ...env,
+    VAPID_PUBLIC_KEY:Buffer.from(publicRaw).toString("base64url"),
+    VAPID_PRIVATE_KEY:privateJwk.d,
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind() {
+            return {
+              first:async()=>adminSession,
+              run:async()=>({success:true,meta:{changes:1}})
+            };
+          },
+          first:async()=>{
+            if (sql.includes("COUNT(*) AS total FROM push_subscriptions")) return {total:3};
+            return null;
+          },
+          all:async()=>{
+            if (sql.includes("FROM push_subscriptions")) throw new Error("D1 subscription listing unavailable");
+            return {results:[]};
+          }
+        };
+      }
+    }
+  };
+  const response=await worker.fetch(new Request("https://api.example.test/api/admin/announcements",{
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({title:"Class update",body:"New announcement"})
+  }),lookupEnv);
+  assert.equal(response.status,201,"the already-persisted announcement remains published");
+  const result=await response.json();
+  assert.equal(result.notifications.total,3);
+  assert.equal(result.notifications.lookupFailed,true);
+  assert.equal(result.notifications.sent,0);
+  assert.equal(result.notifications.failed,0,"a D1 lookup failure is not a failed provider send");
+  assert.equal(result.notifications.skipped,3,"all known recipients must be reported as unattempted");
 });

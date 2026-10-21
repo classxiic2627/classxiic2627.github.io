@@ -2,6 +2,14 @@
 
 This Worker backs the static community site. Secrets stay in Worker configuration and must never be placed in browser JavaScript or committed to Git.
 
+## Browser push notifications
+
+The push flow uses Web Push (VAPID) without a third-party runtime package. The Worker stores each authenticated user's endpoint and encryption keys in the existing `push_subscriptions` D1 table, and sends an encrypted push when an administrator publishes an announcement. Provider requests have a 5-second abort timeout, redirects are disabled to preserve the provider-host allowlist, and announcement fan-out is limited to eight concurrent sends and 40 provider requests per announcement. If more than 40 active devices are registered, a random set of 40 is attempted and the skipped count is returned to the administrator rather than being silently reported as delivered. Each account may register up to 10 notification devices; refreshing an already-owned endpoint remains allowed. Expired endpoints returning HTTP 404/410 are removed in a batched D1 delete. Delivery counts represent provider HTTP outcomes, not proof that a device displayed the notification. If D1 subscription lookup fails, the response marks `lookupFailed` separately from provider `failed` attempts and reports all known recipients as skipped; this prevents a database read failure from being mislabeled as a failed push send. Browser subscription requires HTTPS, notification permission, a supported browser, and a signed-in account that has completed any forced password change.
+
+Before enabling this in staging, generate a dedicated VAPID key pair locally with `node scripts/generate-vapid-keys.mjs`. Set `VAPID_PUBLIC_KEY` and `VAPID_SUBJECT` in the staging Worker variables, and store only `VAPID_PRIVATE_KEY` as a Worker secret using `wrangler secret put VAPID_PRIVATE_KEY`. Use a monitored `mailto:` address for the subject. Never commit the private key or send it to the browser. The notification control remains visible but asks visitors to sign in; the API requires authentication and a completed forced-password change.
+
+Push delivery has automated cryptographic/transport unit coverage, but real browser subscription and delivery through Chrome/Firefox/Safari push services must still be verified on approved no-cost staging. This code change does not configure credentials, deploy a Worker, or activate production push.
+
 ## Current API contract
 
 The account model is **individual accounts**, not one shared class password:

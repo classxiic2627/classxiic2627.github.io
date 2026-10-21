@@ -1,4 +1,5 @@
 import { createGoogleDriveMedia } from "./google-drive.js";
+import { sendWebPush, isPushConfigured } from "./web-push.js";
 
 /**
  * Class XII C Community Archive API — Cloudflare Worker.
@@ -715,18 +716,133 @@ async function handle(request, env) {
     const announcement = cleanText(body.body, 3000, "Announcement", true);
     const announcementId = id();
     await env.DB.prepare("INSERT INTO announcements(id,user_id,title,body) VALUES(?,?,?,?)").bind(announcementId,user.id,title,announcement).run();
-    return json({ok:true,id:announcementId}, 201, env.ALLOWED_ORIGIN);
+    let notifications = {configured:isPushConfigured(env),sent:0,failed:0,expired:0,skipped:0,total:0,cleanupFailed:0,lookupFailed:false};
+    if (notifications.configured) {
+      try {
+        const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.disabled=0").first();
+        notifications.total = Math.max(0,Number(countRow?.total || 0));
+        // Until a bounded recipient list is successfully loaded, count every
+        // registered device as skipped so a lookup failure cannot look complete.
+        notifications.skipped = notifications.total;
+        // Hard cap one announcement at 40 provider requests to stay below
+        // common free-tier subrequest limits even when some endpoints expire.
+        // Random selection avoids permanently excluding the same devices when
+        // the class has more active subscriptions than one request can cover.
+        const subscriptions = (await env.DB.prepare(
+          "SELECT ps.endpoint,ps.p256dh,ps.auth FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id " +
+          "WHERE u.disabled=0 ORDER BY RANDOM() LIMIT 40"
+        ).all()).results || [];
+        notifications.skipped = Math.max(0,notifications.total - subscriptions.length);
+        const outcomes = [];
+        const expiredEndpoints = [];
+        const concurrency = 8;
+        for (let offset = 0; offset < subscriptions.length; offset += concurrency) {
+          const batch = subscriptions.slice(offset, offset + concurrency);
+          const batchOutcomes = await Promise.allSettled(batch.map(async subscription => {
+            const result = await sendWebPush(subscription, {
+              title:title.slice(0,120),
+              body:announcement.slice(0,180),
+              url:"/community.html",
+              tag:"announcement-" + announcementId
+            }, env);
+            if (result.status === 404 || result.status === 410) {
+              expiredEndpoints.push(subscription.endpoint);
+              return "expired";
+            }
+            if (result.status < 200 || result.status >= 300) throw new Error("Push provider returned HTTP " + result.status);
+            return "sent";
+          }));
+          outcomes.push(...batchOutcomes);
+        }
+        notifications.sent = outcomes.filter(result => result.status === "fulfilled" && result.value === "sent").length;
+        notifications.failed = outcomes.filter(result => result.status === "rejected").length;
+        if (expiredEndpoints.length) {
+          notifications.expired = expiredEndpoints.length;
+          const placeholders = expiredEndpoints.map(() => "?").join(",");
+          try {
+            await env.DB.prepare("DELETE FROM push_subscriptions WHERE endpoint IN (" + placeholders + ")").bind(...expiredEndpoints).run();
+          } catch {
+            notifications.cleanupFailed += 1;
+          }
+        }
+      } catch {
+        // This outer catch covers subscription count/list lookup, not provider
+        // attempts (each provider outcome is isolated by Promise.allSettled).
+        // Keep lookup failure distinct so the UI never labels it a failed send.
+        notifications.lookupFailed = true;
+      }
+    }
+    return json({ok:true,id:announcementId,notifications}, 201, env.ALLOWED_ORIGIN);
   }
   if (request.method === "GET" && path === "/api/announcements") {
     const rows = await env.DB.prepare("SELECT id,title,body,created_at AS createdAt FROM announcements ORDER BY created_at DESC LIMIT 50").all();
     return json({items:rows.results || []}, 200, env.ALLOWED_ORIGIN);
   }
-  if (request.method === "GET" && path === "/api/push/public-key") return json({publicKey:env.VAPID_PUBLIC_KEY || null}, 200, env.ALLOWED_ORIGIN);
-  if (request.method === "POST" && path === "/api/push/subscribe") {
-    await auth(request, env, "member");
-    return json({error:"Push delivery is not configured yet. Subscription storage and VAPID signing must be completed before enabling this feature."}, 501, env.ALLOWED_ORIGIN);
+if (request.method === "GET" && path === "/api/push/public-key") {
+    return json({publicKey:isPushConfigured(env) ? env.VAPID_PUBLIC_KEY : null}, 200, env.ALLOWED_ORIGIN);
   }
-  return json({error:"Not found."},404,env.ALLOWED_ORIGIN);
+  if (request.method === "POST" && path === "/api/push/subscribe") {
+    const user = await auth(request, env);
+    await requireChangedPassword(user);
+    if (!isPushConfigured(env)) fail("Push notifications are not configured on the server yet.", 503);
+    const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
+    const endpoint = cleanText(body.endpoint, 2048, "Push endpoint", true);
+    let endpointUrl;
+    try { endpointUrl = new URL(endpoint); } catch { fail("Push endpoint is invalid."); }
+    const allowedPushHost = endpointUrl.protocol === "https:" && (
+      endpointUrl.hostname === "fcm.googleapis.com" ||
+      endpointUrl.hostname === "updates.push.services.mozilla.com" ||
+      endpointUrl.hostname.endsWith(".push.services.mozilla.com") ||
+      endpointUrl.hostname === "web.push.apple.com" ||
+      endpointUrl.hostname.endsWith(".push.apple.com") ||
+      endpointUrl.hostname.endsWith(".notify.windows.com")
+    );
+    if (!allowedPushHost || endpointUrl.username || endpointUrl.password || endpointUrl.port) fail("Push endpoint provider is not supported.");
+    const keys = body.keys;
+    if (!keys || typeof keys !== "object" || Array.isArray(keys) ||
+        typeof keys.p256dh !== "string" || !/^[A-Za-z0-9_-]{87}$/.test(keys.p256dh) ||
+        typeof keys.auth !== "string" || !/^[A-Za-z0-9_-]{22}$/.test(keys.auth)) {
+      fail("Push subscription keys are invalid.");
+    }
+    const existingEndpoint = await env.DB.prepare("SELECT user_id FROM push_subscriptions WHERE endpoint=?").bind(endpoint).first();
+    if (existingEndpoint?.user_id != null && Number(existingEndpoint.user_id) !== user.id) {
+      fail("This browser subscription is already linked to another account. Sign in to that account and disable notifications before linking it here.", 409);
+    }
+    const ownsEndpoint = existingEndpoint?.user_id != null && Number(existingEndpoint.user_id) === user.id;
+    if (!ownsEndpoint) {
+      const countRow = await env.DB.prepare("SELECT COUNT(*) AS count FROM push_subscriptions WHERE user_id=?").bind(user.id).first();
+      if (Number(countRow?.count || 0) >= 10) fail("An account can register up to 10 notification devices.", 429);
+    }
+    const subscriptionWrite = await env.DB.prepare(
+      "INSERT INTO push_subscriptions(id,user_id,endpoint,p256dh,auth) SELECT ?,?,?,?,? " +
+      "WHERE (SELECT COUNT(*) FROM push_subscriptions WHERE user_id=?) < 10 " +
+      "OR EXISTS (SELECT 1 FROM push_subscriptions WHERE endpoint=? AND user_id=?) " +
+      "ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth " +
+      "WHERE push_subscriptions.user_id=excluded.user_id"
+    ).bind(id(),user.id,endpoint,keys.p256dh,keys.auth,user.id,endpoint,user.id).run();
+    if (Number(subscriptionWrite.meta?.changes || 0) === 0) {
+      const currentOwner = await env.DB.prepare("SELECT user_id FROM push_subscriptions WHERE endpoint=?").bind(endpoint).first();
+      if (currentOwner?.user_id != null && Number(currentOwner.user_id) !== user.id) {
+        fail("This browser subscription is already linked to another account. Sign in to that account and disable notifications before linking it here.", 409);
+      }
+      const currentCount = await env.DB.prepare("SELECT COUNT(*) AS count FROM push_subscriptions WHERE user_id=?").bind(user.id).first();
+      if (Number(currentCount?.count || 0) >= 10) fail("An account can register up to 10 notification devices.", 429);
+      fail("This browser subscription could not be registered. Retry shortly.", 409);
+    }
+    return json({ok:true}, 201, env.ALLOWED_ORIGIN);
+  }
+  if (request.method === "DELETE" && path === "/api/push/subscribe") {
+    const user = await auth(request, env);
+    await requireChangedPassword(user);
+    const body = await readJson(request);
+    if (!body || typeof body !== "object" || Array.isArray(body)) fail("Invalid request body.");
+    const endpoint = cleanText(body.endpoint, 2048, "Push endpoint", true);
+    await env.DB.prepare("DELETE FROM push_subscriptions WHERE endpoint=? AND user_id=?").bind(endpoint,user.id).run();
+    return json({ok:true}, 200, env.ALLOWED_ORIGIN);
+  }
+
+    return json({error:"Not found."},404,env.ALLOWED_ORIGIN);
 }
 export default {
   async scheduled(_controller, env, ctx) {
