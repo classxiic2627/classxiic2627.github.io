@@ -1728,7 +1728,7 @@ test("rejects oversized streamed multipart bodies when Content-Length is absent"
   assert.equal(req.headers.get("content-length"), null);
   const response = await worker.fetch(req, authenticatedEnv(memberSession));
   assert.equal(response.status, 413);
-  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 50 MiB media limit." });
+  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 15 MiB media limit." });
 });
 
 test("rejects malformed multipart upload bodies as client errors", async () => {
