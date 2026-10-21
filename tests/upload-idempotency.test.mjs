@@ -4,7 +4,7 @@ import worker from "../backend/worker.js";
 
 const origin = "https://classxiic2627.github.io";
 const retryKey = "upload-retry-key-123456";
-const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
 
 function request(form) {
   return new Request("https://api.example.test/api/content", {
@@ -17,12 +17,12 @@ function request(form) {
     body: form
   });
 }
-function form() {
+function form(bytes = png) {
   const body = new FormData();
   body.set("type", "image");
   body.set("title", "Retry test");
   body.set("caption", "same payload");
-  body.set("media", new File([png], "tiny.png", {type:"image/png"}));
+  body.set("media", new File([bytes], "tiny.png", {type:"image/png"}));
   return body;
 }
 function oauthResponse() {
@@ -129,6 +129,7 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   let second;
   let third;
   let changedPayload;
+  let changedBytesPayload;
   try {
     first = await worker.fetch(request(form()),env);
     second = await worker.fetch(request(form()),env);
@@ -136,6 +137,8 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
     const changed = form();
     changed.set("title", "Different title");
     changedPayload = await worker.fetch(request(changed),env);
+    const alteredBytes = Uint8Array.from([...png.slice(0, 8), 0x01]);
+    changedBytesPayload = await worker.fetch(request(form(alteredBytes)),env);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -144,6 +147,7 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   assert.equal(second.status,200);
   assert.equal(third.status,200, "a completed retry returns the same item without another upload");
   assert.equal(changedPayload.status,409, "reusing a key for a changed payload is rejected");
+  assert.equal(changedBytesPayload.status,409, "different file bytes with identical metadata are rejected");
   const result = await second.json();
   assert.equal(result.id,reservation.item_id);
   assert.equal(reservation.state,"completed");
