@@ -195,7 +195,7 @@ test("one-time setup secret is intentionally excluded from browser CORS prefligh
   assert.equal(response.status, 204);
   assert.equal(response.headers.get("access-control-allow-origin"), origin);
   const allowedHeaders = response.headers.get("access-control-allow-headers");
-  assert.equal(allowedHeaders, "Authorization, Content-Type");
+  assert.equal(allowedHeaders, "Authorization, Content-Type, Idempotency-Key");
   assert.doesNotMatch(allowedHeaders, /X-Setup-Secret/i);
 });
 
@@ -228,6 +228,8 @@ function authenticatedEnv(user) {
               run: async () => {
                 if (sql.includes("INSERT INTO auth_attempts")) return { success: true, meta: { changes: 1, last_row_id: 900 } };
                 if (sql.includes("DELETE FROM auth_attempts")) return { success: true, meta: { changes: 1, last_row_id: 900 } };
+                if (sql.includes("INSERT INTO upload_reservations")) return { success:true, meta:{changes:1} };
+                if (sql.includes("UPDATE upload_reservations")) return { success:true, meta:{changes:1} };
                 return { success: true };
               }
             };
@@ -1858,7 +1860,10 @@ test("removes an uploaded Google Drive file when D1 metadata insertion fails", a
               first: async () => sql.includes("FROM sessions s JOIN users") ? memberSession : null,
               run: async () => {
                 if (sql.includes("INSERT INTO content")) throw new Error("simulated D1 insert failure");
-                return { success: true };
+                if (sql.includes("INSERT INTO upload_reservations") || sql.includes("UPDATE upload_reservations")) {
+                  return {success:true,meta:{changes:1}};
+                }
+                return { success: true, meta:{changes:1} };
               }
             };
           }
