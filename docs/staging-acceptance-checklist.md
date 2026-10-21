@@ -30,6 +30,19 @@ This checklist is for the first isolated, no-cost staging run of the existing Co
 - [ ] Verify application throttling and configured edge-level rate limits in the deployed environment.
 - [ ] Verify the Cron Trigger is configured and the cleanup handler actually runs.
 
+## Browser push acceptance (PR #14; not merged)
+
+The current push integration PR #14 has green mocked CI at head `a7a66135df3e9fb113ec4f614165bca63fdba2ca` ([run 39589662624](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39589662624), 96/96 tests). It enforces a 40-device per-announcement cap, eight concurrent sends, a five-second provider timeout, manual redirect handling, and a 10-device-per-account cap. This is code/test evidence only.
+
+- [ ] Before staging, generate/configure VAPID public/private keys and a valid `mailto:` subject through owner-managed Worker settings; never commit the private key or put it in frontend code.
+- [ ] On the approved staging origin, verify `GET /api/push/public-key` returns the public key only when the server-side VAPID configuration is valid.
+- [ ] Sign in as a test member, complete any forced password change, grant browser notification permission, subscribe, reload, and confirm the UI reflects the existing browser subscription.
+- [ ] Verify a second account cannot claim the same endpoint, and that an account cannot register an 11th device. Include a concurrent last-slot registration test if staging tooling allows it.
+- [ ] Publish a harmless test announcement and verify the actual target browser receives and decrypts a notification, and that clicking it opens only a same-origin page. Record provider response status separately from proof of device display.
+- [ ] With more than 40 disposable test subscriptions, verify the admin UI explicitly reports skipped recipients; do not claim all devices were notified. Confirm a provider timeout is counted as failed and a 404/410 endpoint is cleaned up.
+- [ ] Disable notifications on a test device, confirm the server-side endpoint row is removed for the owning account, and verify that device receives no later announcements.
+- [ ] Record the browser/OS, provider, UTC test time, counts, and sanitized result. No real provider delivery has yet been verified; do not mark these checks complete from mock tests alone.
+
 ## Cross-store failure and recovery
 
 - [ ] Inject: Drive upload succeeds, D1 metadata insert fails, and compensating Drive delete succeeds. Confirm an error is returned and no orphan remains.
