@@ -16,6 +16,14 @@
 - [x] **Make outcome semantics explicit.** `sent` means the provider returned a successful HTTP status, not that a device displayed a notification. Partial delivery and skipped recipients are reported to the admin.
 - [x] Exact-head CI passed on `75059fa36563c30883d79d9b0390d5ceecb7f366`: [run 39595766564](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39595766564), both jobs green and 98/98 tests. PR #14 still requires reviewer sign-off and merge-context review before integration.
 
+## Upload cap policy mismatch — owner decision required
+
+The latest recorded owner decision specifies **50 MiB per file plus 1 MiB multipart overhead**. However, foundation head `f1070c8c0e770465deef41686b5d583bc5864c8b` currently sets a **15 MiB** file cap across Worker/UI/tests as a conservative memory mitigation. Exact-head CI [39596850600](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39596850600) is green for that 15 MiB contract, but passing tests do not authorize changing the owner's product limit.
+
+- [ ] Before merge, Commander Krishna must explicitly choose: restore the approved 50 MiB contract and retain a hard near-limit memory gate, or approve 15 MiB as a deliberate product change.
+- [ ] After the decision, align Worker, browser validation, HTML copy, README, error responses, tests, and staging checklist to the same limit. Do not simply weaken boundary assertions.
+- [ ] The current digest still uses `file.arrayBuffer()`; a 15 MiB cap reduces but does not prove peak-memory safety. Verify peak memory in the actual Worker runtime or implement reviewed bounded-memory hashing before claiming that gate is closed.
+
 ## Upload: remaining acceptance gates
 
 - [ ] **Near-limit memory:** `digestFile(file)` uses `file.arrayBuffer()` plus WebCrypto digest, which materializes a full-file buffer for a 50 MiB upload. The multipart parser also holds the parsed File. Measure peak memory in an actual isolated Worker near the approved 50 MiB limit under the 128 MB isolate ceiling, or replace full-buffer hashing with a reviewed incremental SHA-256 implementation and known-vector/parity tests.
