@@ -579,23 +579,29 @@ async function handle(request, env) {
     await env.DB.prepare("INSERT INTO announcements(id,user_id,title,body) VALUES(?,?,?,?)").bind(announcementId,user.id,title,announcement).run();
     let notifications = {configured:isPushConfigured(env),sent:0,failed:0};
     if (notifications.configured) {
-      const subscriptions = await env.DB.prepare("SELECT endpoint,p256dh,auth FROM push_subscriptions").all();
-      const outcomes = await Promise.allSettled((subscriptions.results || []).map(async subscription => {
-        const result = await sendWebPush(subscription, {
-          title:title.slice(0,120),
-          body:announcement.slice(0,180),
-          url:"/community.html",
-          tag:"announcement-" + announcementId
-        }, env);
-        if (result.status === 404 || result.status === 410) {
-          await env.DB.prepare("DELETE FROM push_subscriptions WHERE endpoint=?").bind(subscription.endpoint).run();
-          return "expired";
-        }
-        if (result.status < 200 || result.status >= 300) throw new Error("Push provider returned HTTP " + result.status);
-        return "sent";
-      }));
-      notifications.sent = outcomes.filter(result => result.status === "fulfilled" && result.value === "sent").length;
-      notifications.failed = outcomes.filter(result => result.status === "rejected").length;
+      try {
+        const subscriptions = await env.DB.prepare("SELECT endpoint,p256dh,auth FROM push_subscriptions").all();
+        const outcomes = await Promise.allSettled((subscriptions.results || []).map(async subscription => {
+          const result = await sendWebPush(subscription, {
+            title:title.slice(0,120),
+            body:announcement.slice(0,180),
+            url:"/community.html",
+            tag:"announcement-" + announcementId
+          }, env);
+          if (result.status === 404 || result.status === 410) {
+            await env.DB.prepare("DELETE FROM push_subscriptions WHERE endpoint=?").bind(subscription.endpoint).run();
+            return "expired";
+          }
+          if (result.status < 200 || result.status >= 300) throw new Error("Push provider returned HTTP " + result.status);
+          return "sent";
+        }));
+        notifications.sent = outcomes.filter(result => result.status === "fulfilled" && result.value === "sent").length;
+        notifications.failed = outcomes.filter(result => result.status === "rejected").length;
+      } catch {
+        // The announcement is already committed; a notification outage must not
+        // make the admin think publication failed and encourage duplicate posts.
+        notifications.failed += 1;
+      }
     }
     return json({ok:true,id:announcementId,notifications}, 201, env.ALLOWED_ORIGIN);
   }
