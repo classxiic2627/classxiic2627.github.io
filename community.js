@@ -370,8 +370,8 @@
       const delivery = published.notifications;
       let message = "Announcement published.";
       if (!delivery || !delivery.configured) message += " Push delivery is not configured on the server.";
-      else if (delivery.sent === 0 && delivery.failed === 0) message += " No registered push subscriptions yet.";
-      else message += " Push notifications sent: " + delivery.sent + "; failed: " + delivery.failed + ".";
+      else if (delivery.sent === 0 && delivery.failed === 0 && !delivery.expired) message += " No registered push subscriptions yet.";
+      else message += " Push notifications sent: " + delivery.sent + "; expired subscriptions removed: " + (delivery.expired || 0) + "; failed: " + delivery.failed + ".";
       status("adminStatus", message);
       await loadPublicContent();
     } catch (error) { status("adminStatus", error.message); }
