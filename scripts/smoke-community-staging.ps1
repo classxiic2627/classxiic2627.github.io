@@ -120,6 +120,7 @@ finally {
   $passwordBody = $null
   $adminSession = $null
   $memberSession = $null
+  $oldMemberToken = $null
   $AdminPasswordSecure = $null
   $SetupSecretSecure = $null
   $MemberTempSecure = $null
