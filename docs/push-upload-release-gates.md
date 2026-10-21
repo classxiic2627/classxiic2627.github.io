@@ -4,17 +4,17 @@
 
 ## Evidence snapshot — 2026-10-21
 
-- Foundation PR #1 head `76ebcc57f2e9f81aeb6c4c809b77ce0749a695cf`: [Actions run 39586560585](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39586560585) passed both jobs and 84/84 Worker tests. Upload idempotency covers concurrent same-key requests and fail-closed recovery for ambiguous Drive results in mocked tests.
-- Browser push PR #14 head `c27e399904788f7d9b4d575ea0ccdd4decbf2462`: [Actions run 39586181284](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39586181284) passed both jobs and 92/92 tests. Provider fetch uses `redirect: "manual"`, with a regression assertion.
+- Foundation PR #1 head `f5f011d0c7b8cb15586b449689b0b551136ec56a`: [Actions run 39586853858](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39586853858) passed both jobs and 84/84 Worker tests. Upload idempotency covers concurrent same-key requests and fail-closed recovery for ambiguous Drive results in mocked tests.
+- Browser push PR #14 head `a7a66135df3e9fb113ec4f614165bca63fdba2ca`: [Actions run 39589662624](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39589662624) passed both jobs and 96/96 tests. The current head includes redirect blocking, a 40-device announcement cap, eight-way bounded concurrency, five-second provider abort timeout, batched expired-endpoint cleanup, explicit partial-delivery accounting, and an atomic 10-device-per-account subscription cap.
 - These are CI/mock results only. No live Drive fault injection, near-limit upload memory measurement, or real browser/provider push delivery has been verified.
 
-## Push delivery: remaining code-review gates
+## Push delivery: remaining acceptance gates
 
-- [ ] **Bound announcement fan-out.** Current reviewed route loads every active subscription and maps all results into `Promise.allSettled`. Add a defined per-announcement cap or durable queue, bounded concurrency, and tests for the cap and partial failures. One announcement must not trigger unbounded crypto work or outbound requests.
-- [ ] **Bound each provider request.** Current reviewed sender has no explicit request timeout/abort signal. Add a short, documented per-endpoint timeout; classify timeout as a failed attempt. Test with a fetch mock that never resolves.
-- [ ] **Bound subscription abuse.** Establish an account-level registration rate/count guard so authenticated users cannot grow the fan-out without limit. Test the limit and its failure response.
-- [ ] **Make outcome semantics explicit.** `sent` means the provider accepted the HTTP request, not that a device displayed a notification. Report partial failures and timeouts accurately; never imply all subscribers were reached if the configured cap excludes some.
-- [ ] Re-run exact-head CI after the above changes and review the final combined head before merge. The current 92/92 run does not cover these missing resource controls or real provider delivery.
+- [x] **Bound announcement fan-out.** Each announcement attempts at most 40 randomly selected active subscriptions, with at most eight concurrent sends. The admin response and UI report total, provider-accepted, failed, expired, skipped, and cleanup-failed outcomes; skipped recipients are never silently reported as delivered.
+- [x] **Bound each provider request.** Web Push requests use a five-second `AbortSignal.timeout`, and redirects are disabled so an allowlisted endpoint cannot redirect the Worker to another host. A never-resolving fetch mock verifies timeout abort.
+- [x] **Bound subscription abuse.** Each account can register up to 10 devices; an already-owned endpoint can be refreshed. The cap is enforced atomically in the insert statement and has a concurrent last-slot regression.
+- [x] **Make outcome semantics explicit.** `sent` means the provider returned a successful HTTP status, not that a device displayed a notification. Partial delivery and skipped recipients are reported to the admin.
+- [x] Exact-head CI passed on `a7a66135df3e9fb113ec4f614165bca63fdba2ca`: [run 39589662624](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39589662624), both jobs green and 96/96 tests. PR #14 still requires reviewer sign-off and merge-context review before integration.
 
 ## Upload: remaining acceptance gates
 
