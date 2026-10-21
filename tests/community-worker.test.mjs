@@ -1672,16 +1672,19 @@ test("keeps the 50 MiB upload cap aligned across Worker, browser, UI, and docs",
   assert.doesNotMatch(readmeSource, /Do not upload photos\/videos without permission/i);
 });
 
-test("rotates the upload retry key when any payload field changes", () => {
+test("binds upload retry keys to payload fingerprints and rotates after a 409 conflict", () => {
   const clientSource = readFileSync(new URL("../community.js", import.meta.url), "utf8");
-  assert.match(clientSource, /\["uploadType", "change"\]/);
-  assert.match(clientSource, /\["uploadTitle", "input"\]/);
-  assert.match(clientSource, /\["uploadCaption", "input"\]/);
-  assert.match(clientSource, /\["uploadMedia", "change"\]/);
-  assert.match(clientSource, /addEventListener\(eventName, \(\) => \{ pendingUploadKey = ""; \}\)/);
-  assert.match(clientSource, /if \(!pendingUploadKey\) pendingUploadKey = crypto\.randomUUID\(\)/);
-  assert.match(clientSource, /pendingUploadKey = "";\s*\$\("uploadForm"\)\.reset\(\)/);
+  assert.match(clientSource, /const pendingUploadKeys = new Map\(\)/);
+  assert.match(clientSource, /const fingerprint = JSON\.stringify\(\{/);
+  assert.match(clientSource, /type, title, caption, name:file\.name, size:file\.size/);
+  assert.match(clientSource, /mime:file\.type, lastModified:file\.lastModified/);
+  assert.match(clientSource, /pendingUploadKeys\.get\(fingerprint\)/);
+  assert.match(clientSource, /pendingUploadKeys\.set\(fingerprint, pendingUploadKey\)/);
+  assert.match(clientSource, /pendingUploadKeys\.delete\(fingerprint\)/);
+  assert.match(clientSource, /if \(error\.status === 409\) pendingUploadKeys\.delete\(fingerprint\)/);
+  assert.match(clientSource, /error\.status = response\.status/);
 });
+
 
 test("rejects multipart uploads over the 50 MiB limit from declared length before parsing", async () => {
   const req = new Request("https://api.example.test/api/content", {
