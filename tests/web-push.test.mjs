@@ -57,6 +57,7 @@ test("Web Push sends encrypted payload with VAPID authorization", async () => {
   assert.equal(request.url,pair.subscription.endpoint);
   assert.equal(request.init.method,"POST");
   assert.equal(request.init.redirect,"manual","provider redirects must not bypass the endpoint host allowlist");
+  assert.ok(request.init.signal instanceof AbortSignal,"provider requests must have a bounded timeout");
   assert.match(request.init.headers.Authorization,/^vapid t=[A-Za-z0-9_.-]+, k=/);
   const vapidToken = request.init.headers.Authorization.slice("vapid t=".length).split(", k=")[0];
   const [jwtHeader,jwtClaims,jwtSignature] = vapidToken.split(".");
