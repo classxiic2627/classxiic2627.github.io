@@ -2106,7 +2106,7 @@ test("push subscription cannot be reassigned from another account", async () => 
       }
     }
   };
-  const response = await worker.fetch(request("/api/push/subscribe", {
+  const response = await worker.fetch(new Request("https://api.example.test/api/push/subscribe", {
     method:"POST",
     headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
     body:JSON.stringify({
