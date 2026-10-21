@@ -2,7 +2,7 @@
 
 ## Additional work in progress — browser push
 
-As of 2026-10-21, browser push is being implemented separately in [draft PR #7](https://github.com/classxiic2627/classxiic2627.github.io/pull/7), stacked on `feature/community-security-foundation`. Exact push-branch head `52f2e27b3b9dfa340d0a2475abecbbe86b50a859` passed Actions run [39572882343](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39572882343): both jobs green, 87/87 tests. This evidence covers mocked Web Push signing/encryption, API auth/configuration behavior, and the existing local D1 smoke—not real push-provider delivery.
+As of 2026-10-21, browser push is being implemented separately in [draft PR #7](https://github.com/classxiic2627/classxiic2627.github.io/pull/7), stacked on `feature/community-security-foundation`. Exact push-branch head `d5ea2a099b934adcd95add6c7430ea1c28197469` passed Actions run [39573158093](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39573158093): both jobs green, 87/87 tests. This evidence covers mocked Web Push signing/encryption, API auth/configuration behavior, and the existing local D1 smoke—not real push-provider delivery.
 
 This does **not** change the release gate: PR #7 is draft/unmerged; no VAPID keys are configured, no real browser/provider delivery has been tested, and the published frontend remains disconnected from a deployed Worker. Do not mark the system production-ready from CI alone. Continue to require approved no-cost staging, owner-managed credentials, real Drive and push verification, D1 inventory/backup/restore, near-limit upload-memory checks, and separate explicit production approval.
 
