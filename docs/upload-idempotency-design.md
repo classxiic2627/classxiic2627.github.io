@@ -1,16 +1,16 @@
 # Media upload idempotency: implementation contract
 
-**Status: design contract only — not implemented, not a launch approval.**
+**Status: implementation added to the feature branch; CI and staging verification remain required. This is not launch approval.**
 
-The current upload flow creates a new content UUID inside the Worker for each request, uploads to Drive, and then inserts metadata into D1. If Drive commits the file but the Worker loses the final response before receiving the Drive file ID, the Worker cannot delete the file or link it to D1. Retrying the same browser submission creates a second upload. The current orphan-cleanup test covers a *known Drive file ID followed by D1 failure*; it does not cover this lost-response window.
+The feature branch now reserves each upload in D1 using a user-scoped hash of the client retry key and a fingerprint of the normalized form plus SHA-256 of the file bytes. The stable content UUID is written to Drive `appProperties`; ambiguous retries search only the configured folder and fail closed when no unique matching file is found. The UI retains the key after failure and clears it after success. A deterministic lost-final-response regression test has been added; this branch must still pass CI and the real isolated-staging fault injection before the gate can close.
 
 ## Required design
 
 1. The browser creates one cryptographically random idempotency key for a specific upload attempt and reuses that same key for retries of the same file/form. A changed file or changed submission must get a new key. Do not store file contents or credentials in browser storage.
 2. The Worker validates the key's format and length and scopes it to the authenticated user. D1 must have a unique constraint on `(user_id, idempotency_key_hash)`; store a hash of the key, not the raw key.
-3. Reserve the operation in D1 *before* calling Drive. Persist a stable content UUID, a request fingerprint (file size, normalized MIME/type, title/caption and a client-provided file digest if computed safely), and a state such as `reserved`, `uploaded`, `committed`, or `reconciliation_required`. Same key + different fingerprint must return 409; same key + committed operation must return the original content ID without uploading again.
-4. Attach the stable content UUID to the Drive file's private `appProperties` (for example `communityContentId`) during resumable-upload initiation. Add a Drive adapter lookup that searches only within the configured dedicated folder for that exact app property. On an ambiguous upload outcome, reconcile by this stable property before attempting another create. Validate the returned file's parent, MIME type, size, and app property before linking it.
-5. Use D1 conditional updates so concurrent requests with the same key cannot both start an upload. If the state is already in progress or ambiguous, return a retryable response and reconcile rather than blindly creating another Drive file. Never delete a candidate unless its folder, stable ID, and metadata have been verified.
+3. Implemented in this branch: reserve the operation in D1 before calling Drive. Persist a stable content UUID, a server-computed request fingerprint (including file-byte SHA-256), and a state (`processing`, `retryable`, or `completed`). Same key + different fingerprint returns 409; completed retries return the original content ID.
+4. Implemented in this branch: attach the stable content UUID to Drive `appProperties` during resumable-upload initiation. The adapter lookup scopes results to the configured folder and validates parent, MIME type, size, and app property before linking them.
+5. Implemented in this branch: a unique D1 reservation elects one upload owner. An in-progress or ambiguous reservation is reconciled and never blindly re-uploaded; a confirmed cleanup returns the reservation to `retryable`. Keep concurrency and real-provider behavior in the acceptance gate.
 6. Make reconciliation observable but sanitized. Do not log OAuth tokens, request bodies, raw idempotency keys, provider response bodies, or user content. Keep the Drive file ID only in structured restricted operational logs where necessary.
 
 ## Required tests before the gate can be closed
@@ -19,7 +19,7 @@ The current upload flow creates a new content UUID inside the Worker for each re
 - Same key submitted concurrently does not create two Drive files.
 - Same key + different user is isolated; one user's key cannot reveal or reuse another user's upload.
 - Same key + changed payload returns 409 without a second Drive write.
-- Simulate Drive committing a file while the final PUT response is lost; retry reconciles the existing Drive file and creates no duplicate.
+- Added deterministic regression test: simulate Drive committing a file while the final PUT response is lost; retry reconciles the existing Drive file and creates no duplicate. This test still needs a green CI run.
 - Simulate a worker restart between Drive commit and D1 metadata commit; reconciliation still succeeds.
 - Simulate Drive lookup timeout, eventual-consistency delay, malformed app properties, wrong parent folder, and D1 outage; fail closed and leave a visible reconciliation state rather than creating another file or deleting an unverified file.
 - Existing successful upload, MIME/signature validation, 50 MiB file limit, request-size limit, authorization, admin-only removal, and orphan cleanup regressions remain green.
@@ -27,4 +27,4 @@ The current upload flow creates a new content UUID inside the Worker for each re
 
 ## Exit criteria
 
-This gate stays open until the implementation and all deterministic mocked tests pass, then the lost-response test passes against real staging Drive. A design note, local D1 smoke test, or green CI run alone does not close it. Do not merge or deploy production without separate owner approval.
+This gate stays open until the implementation and all deterministic mocked tests pass, then the lost-response test passes against real staging Drive. A design note or green CI run alone does not close it; the real isolated-staging fault injection is still required. Do not merge or deploy production without separate owner approval.
