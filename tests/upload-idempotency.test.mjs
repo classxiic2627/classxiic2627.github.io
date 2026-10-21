@@ -186,6 +186,168 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
 });
 
 
+test("failed Drive cleanup after D1 insert failure enters reconciliation-required and recovers safely", async () => {
+  const reservation = {user_id:7,payload_hash:"",item_id:"",state:"",drive_file_id:null};
+  const contentRows = [];
+  let contentInsertAttempts = 0;
+  let driveDeleteAttempts = 0;
+  let reservationExists = false;
+  let uploadStarts = 0;
+  let uploadPuts = 0;
+  let driveFile = null;
+  const env = {
+    ALLOWED_ORIGIN: origin,
+    GOOGLE_CLIENT_ID: "idempotency-test-client.apps.googleusercontent.com",
+    GOOGLE_CLIENT_SECRET: "fake-client-secret",
+    GOOGLE_REFRESH_TOKEN: "fake-refresh-token",
+    GOOGLE_DRIVE_FOLDER_ID: "folder_test-123",
+    DB: {
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first: async () => {
+                if (sql.includes("FROM sessions s JOIN users")) return {
+                  id:7,username:"student",display_name:"Student",role:"member",
+                  disabled:0,must_change_password:0,expires_at:Math.floor(Date.now()/1000)+3600
+                };
+                if (sql.includes("FROM upload_reservations")) return reservationExists ? {...reservation} : null;
+                return null;
+              },
+              run: async () => {
+                if (sql.includes("INSERT INTO upload_reservations")) {
+                  if (reservationExists) return {meta:{changes:0}};
+                  reservationExists = true;
+                  reservation.user_id = values[0];
+                  reservation.payload_hash = values[2];
+                  reservation.item_id = values[3];
+                  reservation.state = "processing";
+                  return {meta:{changes:1}};
+                }
+                if (sql.includes("INSERT INTO content")) {
+                  contentInsertAttempts++;
+                  if (contentInsertAttempts === 1) throw new Error("simulated D1 insert failure");
+                  contentRows.push(values);
+                  return {meta:{changes:1}};
+                }
+                if (sql.includes("SET state='completed'")) {
+                  reservation.state = "completed";
+                  reservation.drive_file_id = values[0];
+                  return {meta:{changes:1}};
+                }
+                if (sql.includes("SET state='reconciliation_required'")) {
+                  reservation.state = "reconciliation_required";
+                  return {meta:{changes:1}};
+                }
+                if (sql.includes("SET state='processing'")) {
+                  const expectedState = sql.includes("state='reconciliation_required'") ? "reconciliation_required" : "retryable";
+                  if (reservation.state !== expectedState) return {meta:{changes:0}};
+                  reservation.state = "processing";
+                  return {meta:{changes:1}};
+                }
+                if (sql.includes("SET state='retryable'")) {
+                  reservation.state = "retryable";
+                  return {meta:{changes:1}};
+                }
+                if (sql.includes("SET state='reconciliation_required'")) {
+                  reservation.state = "reconciliation_required";
+                  return {meta:{changes:1}};
+                }
+                if (sql.includes("SET state='processing'")) {
+                  if (reservation.state !== "reconciliation_required" && reservation.state !== "retryable") return {meta:{changes:0}};
+                  reservation.state = "processing";
+                  return {meta:{changes:1}};
+                }
+                return {meta:{changes:1}};
+              },
+              all: async () => ({results:[]})
+            };
+          },
+          first: async () => null,
+          run: async () => ({meta:{changes:1}}),
+          all: async () => ({results:[]})
+        };
+      }
+    },
+    __googleFetch: async (input, options = {}) => {
+      const target = String(input);
+      if (target === "https://oauth2.googleapis.com/token") return oauthResponse();
+      assert.equal(options.headers.Authorization, "Bearer unit-test-access-token");
+      if (target.startsWith("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=") && options.method === "POST") {
+        uploadStarts += 1;
+        const metadata = JSON.parse(String(options.body));
+        driveFile = {
+          id:"drive-idempotency-123",
+          name:metadata.name,
+          mimeType:metadata.mimeType,
+          size:png.length,
+          parents:metadata.parents,
+          appProperties:metadata.appProperties
+        };
+        return new Response(null,{status:200,headers:{Location:"https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=idempotency-session"}});
+      }
+      if (target === "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&upload_id=idempotency-session" && options.method === "PUT") {
+        uploadPuts += 1;
+        return new Response(JSON.stringify(driveFile),{status:200,headers:{"Content-Type":"application/json"}});
+      }
+      if (target.includes("/drive/v3/files/drive-idempotency-123") && options.method === "DELETE") {
+        driveDeleteAttempts++;
+        throw new Error("simulated Drive delete failure");
+      }
+      if (target.startsWith("https://www.googleapis.com/drive/v3/files?")) {
+        assert.match(decodeURIComponent(target), /appProperties has/);
+        return new Response(JSON.stringify({files:driveFile ? [driveFile] : []}),{
+          status:200,headers:{"Content-Type":"application/json"}
+        });
+      }
+      throw new Error("Unexpected Google API URL: "+target);
+    }
+  };
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = env.__googleFetch;
+  let first;
+  let noMatchRetry;
+  let second;
+  let third;
+  let changedPayload;
+  let changedBytesPayload;
+  try {
+    first = await worker.fetch(request(form()),env);
+    // Drive listing can lag behind a successful upload. A no-match result must
+    // remain fail-closed; it must never trigger a second Drive upload.
+    const committedFile = driveFile;
+    driveFile = null;
+    noMatchRetry = await worker.fetch(request(form()),env);
+    driveFile = committedFile;
+    second = await worker.fetch(request(form()),env);
+    third = await worker.fetch(request(form()),env);
+    const changed = form();
+    changed.set("title", "Different title");
+    changedPayload = await worker.fetch(request(changed),env);
+    const alteredBytes = Uint8Array.from([...png.slice(0, 8), 0x01]);
+    changedBytesPayload = await worker.fetch(request(form(alteredBytes)),env);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(first.status,500);
+  assert.equal(reservation.state,"reconciliation_required");
+  assert.equal(reservation.drive_file_id,"drive-idempotency-123");
+  assert.equal(driveDeleteAttempts,1);
+  assert.equal(second.status,200);
+  const result = await second.json();
+  assert.equal(result.id,reservation.item_id);
+  assert.equal(reservation.state,"completed");
+  assert.equal(contentRows.length,1);
+  assert.equal(contentRows[0][0],reservation.item_id);
+  assert.equal(contentRows[0][5],"drive-idempotency-123");
+  assert.equal(contentInsertAttempts,2);
+  assert.equal(uploadStarts,1);
+  assert.equal(uploadPuts,1);
+});
+
+
 test("concurrent same-key retry cannot publish then delete the original request's Drive file", async () => {
   const reservation = {user_id:7,payload_hash:"",item_id:"",state:"",drive_file_id:null};
   let reservationExists = false;
