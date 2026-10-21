@@ -58,6 +58,23 @@ try {
     throw "Administrator login or role check failed."
   }
 
+  Write-Host "Checking authenticated D1 and Google Drive dependency readiness..."
+  $dependencyHealth = Invoke-WebRequest -Method GET -Uri "$BaseUrl/api/admin/health" -Headers @{ Authorization = "Bearer $($adminSession.token)" } -TimeoutSec 30 -SkipHttpErrorCheck
+  if ([int]$dependencyHealth.StatusCode -ne 200) {
+    throw "Authenticated dependency health failed (HTTP $([int]$dependencyHealth.StatusCode)); no test member or media has been created."
+  }
+  try {
+    $dependencyHealthBody = $dependencyHealth.Content | ConvertFrom-Json
+  }
+  catch {
+    throw "Authenticated dependency health returned an invalid response; no test member or media has been created."
+  }
+  if ($dependencyHealthBody.ok -ne $true -or $dependencyHealthBody.storage -ne "google-drive") {
+    throw "Authenticated dependency health did not confirm D1 and Google Drive readiness; no test member or media has been created."
+  }
+  $dependencyHealth = $null
+  $dependencyHealthBody = $null
+
   Write-Host "Checking role separation for administrator credentials..."
   $wrongAdminRole = Invoke-WebRequest -Method POST -Uri "$BaseUrl/api/member/login" -ContentType "application/json" -Body (@{ username = $AdminUsername; password = $AdminPassword } | ConvertTo-Json -Compress) -TimeoutSec 30 -SkipHttpErrorCheck
   if ($wrongAdminRole.StatusCode -ne 401) { throw "Administrator credentials were accepted by the member login route." }
