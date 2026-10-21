@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS upload_reservations (
   key_hash TEXT NOT NULL,
   payload_hash TEXT NOT NULL,
   item_id TEXT NOT NULL UNIQUE,
-  state TEXT NOT NULL CHECK (state IN ('processing', 'retryable', 'completed')),
+  state TEXT NOT NULL CHECK (state IN ('processing', 'reconciliation_required', 'retryable', 'completed')),
   drive_file_id TEXT,
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
