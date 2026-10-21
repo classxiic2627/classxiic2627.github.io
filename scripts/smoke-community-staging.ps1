@@ -77,10 +77,17 @@ try {
   }
 
   Write-Host "Changing the test member password and verifying session revocation..."
+  $oldMemberToken = $memberSession.token
   $passwordBody = @{ currentPassword = $MemberTempPassword; newPassword = $MemberNewPassword } | ConvertTo-Json -Compress
-  Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/account/password" -Headers @{ Authorization = "Bearer $($memberSession.token)" } -ContentType "application/json" -Body $passwordBody -TimeoutSec 30 | Out-Null
+  Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/account/password" -Headers @{ Authorization = "Bearer $oldMemberToken" } -ContentType "application/json" -Body $passwordBody -TimeoutSec 30 | Out-Null
   $passwordBody = $null
+
+  $oldSessionResponse = Invoke-WebRequest -Method POST -Uri "$BaseUrl/api/account/password" -Headers @{ Authorization = "Bearer $oldMemberToken" } -ContentType "application/json" -Body (@{ currentPassword = $MemberTempPassword; newPassword = $MemberNewPassword } | ConvertTo-Json -Compress) -TimeoutSec 30 -SkipHttpErrorCheck
+  if ($oldSessionResponse.StatusCode -ne 401) { throw "Password change did not revoke the old member session." }
+  $oldPasswordResponse = Invoke-WebRequest -Method POST -Uri "$BaseUrl/api/member/login" -ContentType "application/json" -Body (@{ username = $MemberUsername; password = $MemberTempPassword } | ConvertTo-Json -Compress) -TimeoutSec 30 -SkipHttpErrorCheck
+  if ($oldPasswordResponse.StatusCode -ne 401) { throw "The old temporary password remained valid after password change." }
   $memberSession = $null
+  $oldMemberToken = $null
 
   $memberLoginBody = @{ username = $MemberUsername; password = $MemberNewPassword } | ConvertTo-Json -Compress
   $memberSession = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/member/login" -ContentType "application/json" -Body $memberLoginBody -TimeoutSec 30
