@@ -2,7 +2,7 @@
 
 **Status: implementation added to the feature branch; CI and staging verification remain required. This is not launch approval.**
 
-The feature branch reserves each upload in D1 using a user-scoped hash of the client retry key and a fingerprint of the normalized form plus SHA-256 of the actual binary file bytes. The stable content UUID is written to Drive `appProperties`; ambiguous retries search only the configured folder and fail closed when no unique matching file is found. The UI retains the key after failure and clears it after success. The byte-hash buffer is scoped to a helper so it is not retained throughout the Drive upload, but hashing still materializes the full file in memory; near-50 MiB peak memory must be verified in isolated staging. Exact-head run [39576803930](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39576803930) passed 82/82 tests on code commit `5728b76a3b75d63b474bb2c597ccc33868b9f19b`; a subsequent schema-state change and this documentation refresh are awaiting their own exact-head CI confirmation. Real isolated-staging fault injection remains required.
+The feature branch reserves each upload in D1 using a user-scoped hash of the client retry key and a fingerprint of the normalized form plus SHA-256 of the actual binary file bytes. The stable content UUID is written to Drive `appProperties`; ambiguous retries search only the configured folder and fail closed when no unique matching file is found. The UI retains the key after failure and clears it after success. The byte-hash buffer is scoped to a helper so it is not retained throughout the Drive upload, but hashing still materializes the full file in memory; near-50 MiB peak memory must be verified in isolated staging. Exact-head run [39584633359](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39584633359) passed 82/82 tests on code commit `27f3156eb311971234f0c7fa14a807b8b0c7c7c3`; a subsequent schema-state change and this documentation refresh are awaiting their own exact-head CI confirmation. Real isolated-staging fault injection remains required.
 
 ## Required design
 
@@ -41,7 +41,7 @@ A Drive upload request can fail after the provider accepted bytes but before the
 
 5. **After any repair**, verify the reservation is `completed`, the content row points to the same verified Drive ID, a same-payload retry returns the same `item_id`, and a changed-payload retry returns 409. Record only the reservation `item_id`, timestamps, verified outcome, and operator/action reference in the incident note.
 
-This procedure is manual and staging-only. The implementation still needs tests for stale reservation visibility, D1 outages, lookup delays/timeouts, worker restart, and a real lost-response fault injection in approved no-cost staging. Do not merge or deploy production without separate owner approval.
+This procedure is manual and staging-only. The implementation still needs tests for D1 outages, lookup timeouts, worker restart, and a real lost-response fault injection in approved no-cost staging. The mocked eventual-consistency case now verifies that a temporary no-match returns 503 and never triggers a second upload; once the existing object becomes visible, retry reconciliation completes. Do not merge or deploy production without separate owner approval.
 
 ## Required tests before the gate can be closed
 
@@ -49,7 +49,7 @@ This procedure is manual and staging-only. The implementation still needs tests 
 - Same key submitted concurrently does not create two Drive files.
 - Same key + different user is isolated; one user's key cannot reveal or reuse another user's upload.
 - Same key + changed payload returns 409 without a second Drive write.
-- Added deterministic regression test: simulate Drive committing a file while the final PUT response is lost; retry reconciles the existing Drive file and creates no duplicate. Exact-head CI run [39576803930](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39576803930) passes all 82 Worker tests, including a binary-distinct payload rejection case.
+- Added deterministic regression test: simulate Drive committing a file while the final PUT response is lost; retry reconciles the existing Drive file and creates no duplicate. Exact-head CI run [39584633359](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39584633359) passes all 82 Worker tests, including a binary-distinct payload rejection case.
 - Simulate a worker restart between Drive commit and D1 metadata commit; reconciliation still succeeds.
 - Simulate Drive lookup timeout, eventual-consistency delay, malformed app properties, wrong parent folder, and D1 outage; fail closed and leave a visible reconciliation state rather than creating another file or deleting an unverified file.
 - Existing successful upload, MIME/signature validation, 50 MiB file limit, request-size limit, authorization, admin-only removal, and orphan cleanup regressions remain green.
@@ -57,4 +57,4 @@ This procedure is manual and staging-only. The implementation still needs tests 
 
 ## Exit criteria
 
-This gate stays open until the implementation and all deterministic mocked tests pass, then the lost-response test passes against real staging Drive. A design note or green CI run alone does not close it; the real isolated-staging fault injection is still required. Do not merge or deploy production without separate owner approval.
+This gate stays open until the implementation and all deterministic mocked tests pass, then the lost-response test passes against real staging Drive. A design note or green CI run alone does not close it; the real isolated-staging fault injection is still required. Latest exact-head verification: commit `27f3156eb311971234f0c7fa14a807b8b0c7c7c3`, Actions run [39584633359](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39584633359), both jobs green, 83/83 Worker tests, ordered migration/schema validation and local D1 smoke passed. Do not merge or deploy production without separate owner approval.
