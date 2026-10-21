@@ -147,6 +147,9 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   let first;
   let noMatchRetry;
   let second;
+  let third;
+  let changedPayload;
+  let changedBytesPayload;
   try {
     first = await worker.fetch(request(form()),env);
     // Drive listing can lag behind a successful upload. A no-match result must
@@ -156,6 +159,7 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
     noMatchRetry = await worker.fetch(request(form()),env);
     driveFile = committedFile;
     second = await worker.fetch(request(form()),env);
+    third = await worker.fetch(request(form()),env);
     const changed = form();
     changed.set("title", "Different title");
     changedPayload = await worker.fetch(request(changed),env);
@@ -306,15 +310,15 @@ test("failed Drive cleanup after D1 insert failure enters reconciliation-require
   let second;
   try {
     first = await worker.fetch(request(form()),env);
+    assert.equal(reservation.state,"reconciliation_required");
+    assert.equal(reservation.drive_file_id,"drive-idempotency-123");
+    assert.equal(driveDeleteAttempts,1);
     second = await worker.fetch(request(form()),env);
   } finally {
     globalThis.fetch = originalFetch;
   }
 
   assert.equal(first.status,500);
-  assert.equal(reservation.state,"reconciliation_required");
-  assert.equal(reservation.drive_file_id,"drive-idempotency-123");
-  assert.equal(driveDeleteAttempts,1);
   assert.equal(second.status,200);
   const result = await second.json();
   assert.equal(result.id,reservation.item_id);
