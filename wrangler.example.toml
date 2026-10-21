@@ -11,6 +11,9 @@ compatibility_date = "2026-10-19"
 ALLOWED_ORIGIN = "https://REPLACE_WITH_APPROVED_STAGING_ORIGIN"
 GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID"
 GOOGLE_DRIVE_FOLDER_ID = "REPLACE_WITH_DEDICATED_DRIVE_FOLDER_ID"
+# Generate these locally with: node scripts/generate-vapid-keys.mjs
+VAPID_PUBLIC_KEY = "REPLACE_WITH_GENERATED_VAPID_PUBLIC_KEY"
+VAPID_SUBJECT = "mailto:replace-with-a-monitored-address@example.com"
 
 [triggers]
 # Required for the Worker scheduled() cleanup handler. Verify this trigger in staging.
@@ -22,5 +25,5 @@ database_name = "community-hub-staging"
 database_id = "REPLACE_WITH_VERIFIED_STAGING_D1_DATABASE_ID"
 migrations_dir = "backend/migrations"
 
-# Store GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, and SETUP_SECRET with
+# Store GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN, SETUP_SECRET, and VAPID_PRIVATE_KEY with
 # wrangler secret put; never place those values in this file or Git.
