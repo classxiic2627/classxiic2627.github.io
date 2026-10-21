@@ -142,6 +142,50 @@ try {
     $uploadResult = $uploadResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
     if (-not $uploadResult.id) { throw "Staging media upload response did not include an item ID." }
 
+    Write-Host "Checking real staging upload idempotency..."
+    $retryMultipart = [System.Net.Http.MultipartFormDataContent]::new()
+    $retryMultipart.Add([System.Net.Http.StringContent]::new("image"), "type")
+    $retryMultipart.Add([System.Net.Http.StringContent]::new("Staging smoke test"), "title")
+    $retryMultipart.Add([System.Net.Http.StringContent]::new("Temporary item created by the staging smoke script"), "caption")
+    $retryMediaContent = [System.Net.Http.ByteArrayContent]::new($pngBytes)
+    $retryMediaContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("image/png")
+    $retryMultipart.Add($retryMediaContent, "media", "staging-smoke.png")
+    $retryRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, "$BaseUrl/api/content")
+    $retryRequest.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $memberSession.token)
+    $retryRequest.Headers.Add("Idempotency-Key", $uploadKey)
+    $retryRequest.Content = $retryMultipart
+    $retryResponse = $httpClient.SendAsync($retryRequest).GetAwaiter().GetResult()
+    if ([int]$retryResponse.StatusCode -ne 200) {
+      throw "Same-payload staging retry failed (HTTP $([int]$retryResponse.StatusCode))."
+    }
+    $retryResult = $retryResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+    if ($retryResult.id -ne $uploadResult.id) { throw "Same-payload staging retry returned a different item ID." }
+    $retryRequest.Dispose()
+    $retryResponse.Dispose()
+    $retryMultipart.Dispose()
+
+    $changedBytes = [byte[]]$pngBytes.Clone()
+    $changedBytes[$changedBytes.Length - 1] = $changedBytes[$changedBytes.Length - 1] -bxor 1
+    $changedMultipart = [System.Net.Http.MultipartFormDataContent]::new()
+    $changedMultipart.Add([System.Net.Http.StringContent]::new("image"), "type")
+    $changedMultipart.Add([System.Net.Http.StringContent]::new("Staging smoke test"), "title")
+    $changedMultipart.Add([System.Net.Http.StringContent]::new("Temporary item created by the staging smoke script"), "caption")
+    $changedMediaContent = [System.Net.Http.ByteArrayContent]::new($changedBytes)
+    $changedMediaContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("image/png")
+    $changedMultipart.Add($changedMediaContent, "media", "staging-smoke.png")
+    $changedRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, "$BaseUrl/api/content")
+    $changedRequest.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $memberSession.token)
+    $changedRequest.Headers.Add("Idempotency-Key", $uploadKey)
+    $changedRequest.Content = $changedMultipart
+    $changedResponse = $httpClient.SendAsync($changedRequest).GetAwaiter().GetResult()
+    if ([int]$changedResponse.StatusCode -ne 409) {
+      throw "Changed bytes with the same staging retry key were not rejected (HTTP $([int]$changedResponse.StatusCode))."
+    }
+    $changedRequest.Dispose()
+    $changedResponse.Dispose()
+    $changedMultipart.Dispose()
+    $changedBytes = $null
+
     $mediaRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, "$BaseUrl/api/media/$($uploadResult.id)")
     $mediaResponse = $httpClient.SendAsync($mediaRequest).GetAwaiter().GetResult()
     if ([int]$mediaResponse.StatusCode -ne 200) {
