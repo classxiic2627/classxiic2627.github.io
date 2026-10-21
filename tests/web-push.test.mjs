@@ -99,6 +99,22 @@ test("Web Push sends encrypted payload with VAPID authorization", async () => {
   });
 });
 
+test("Web Push aborts a provider request that never resolves", async () => {
+  const pair=await keys();
+  let signal;
+  await assert.rejects(
+    sendWebPush(pair.subscription,{title:"Timeout test"},pair.env,async (_url,init)=>{
+      signal=init.signal;
+      return await new Promise((resolve,reject)=>{
+        if (signal.aborted) return reject(signal.reason);
+        signal.addEventListener("abort",()=>reject(signal.reason),{once:true});
+      });
+    },20),
+    error=>error?.name==="TimeoutError"
+  );
+  assert.ok(signal?.aborted);
+});
+
 test("Web Push rejects non-HTTPS endpoints before network requests", async () => {
   const pair = await keys();
   await assert.rejects(
