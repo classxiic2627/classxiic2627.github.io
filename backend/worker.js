@@ -568,16 +568,41 @@ async function handle(request, env) {
           ).bind(committedRow.media_key, user.id, keyHash).run();
           return json({ok:true,id:itemId}, 200, env.ALLOWED_ORIGIN);
         }
-        // The previous attempt may have committed in Drive but lost its reply.
+        // A content row proves the prior request crossed the D1 commit boundary;
+        // repair its reservation without touching the Drive object.
+        if (existing.state === "processing") {
+          fail("This upload is still in progress. Retry shortly.", 503);
+        }
+        // Only a request whose previous attempt explicitly recorded an ambiguous
+        // provider result may claim reconciliation. This prevents a concurrent
+        // retry from racing the original request between Drive commit and D1 insert.
+        if (existing.state === "reconciliation_required") {
+          const claimed = await env.DB.prepare(
+            "UPDATE upload_reservations SET state='processing',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') " +
+            "WHERE user_id=? AND key_hash=? AND state='reconciliation_required'"
+          ).bind(user.id, keyHash).run();
+          if (Number(claimed.meta?.changes || 0) !== 1) fail("Upload is being reconciled. Retry shortly.", 503);
+        }
+        const deferReconciliation = async () => {
+          await env.DB.prepare(
+            "UPDATE upload_reservations SET state='reconciliation_required',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') " +
+            "WHERE user_id=? AND key_hash=? AND state='processing'"
+          ).bind(user.id, keyHash).run().catch(() => {});
+        };
+        // The previous attempt explicitly returned an ambiguous Drive outcome.
         // Reconcile by stable Drive appProperties; never upload again merely
         // because a lookup returns no result (Drive listing is eventually consistent).
         let recovered;
         try { recovered = await mediaStore.findByUploadId(itemId); }
-        catch { fail("Upload is being reconciled. Retry shortly.", 503); }
-        if (!recovered) fail("Upload is being reconciled. Retry shortly.", 503);
+        catch { await deferReconciliation(); fail("Upload is being reconciled. Retry shortly.", 503); }
+        if (!recovered) {
+          await deferReconciliation();
+          fail("Upload is being reconciled. Retry shortly.", 503);
+        }
         const driveFileId = recovered.id;
         if (typeof driveFileId !== "string" || !/^[A-Za-z0-9_-]+$/.test(driveFileId) ||
             recovered.mimeType !== mime || Number(recovered.size) !== file.size) {
+          await deferReconciliation();
           fail("Upload recovery needs administrator review.", 503);
         }
         try {
@@ -587,6 +612,7 @@ async function handle(request, env) {
             "UPDATE upload_reservations SET state='completed',drive_file_id=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND key_hash=?"
           ).bind(driveFileId, user.id, keyHash).run();
         } catch {
+          await deferReconciliation();
           fail("Upload recovery is waiting for database reconciliation. Retry shortly.", 503);
         }
         return json({ok:true,id:itemId}, 200, env.ALLOWED_ORIGIN);
@@ -600,8 +626,12 @@ async function handle(request, env) {
         httpMetadata: {contentType:mime, cacheControl:"private, no-store"}
       });
     } catch {
-      // A transport failure is ambiguous: keep the reservation processing so a
-      // retry must search Drive before it is ever allowed to upload again.
+      // Record the ambiguous outcome before returning so only a later request
+      // may claim reconciliation; concurrent requests still see processing.
+      await env.DB.prepare(
+        "UPDATE upload_reservations SET state='reconciliation_required',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') " +
+        "WHERE user_id=? AND key_hash=? AND state='processing'"
+      ).bind(user.id, keyHash).run().catch(() => {});
       fail("Google Drive upload failed. Retry this same upload shortly.", 503);
     }
     const driveFileId = stored?.key || stored?.id;
