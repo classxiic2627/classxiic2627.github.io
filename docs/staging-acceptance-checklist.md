@@ -32,7 +32,7 @@ This checklist is for the first isolated, no-cost staging run of the existing Co
 
 ## Browser push acceptance (PR #14; not merged)
 
-The current push integration PR #14 has green mocked CI at head `a7a66135df3e9fb113ec4f614165bca63fdba2ca` ([run 39589662624](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39589662624), 96/96 tests). It enforces a 40-device per-announcement cap, eight concurrent sends, a five-second provider timeout, manual redirect handling, and a 10-device-per-account cap. This is code/test evidence only.
+The current push integration PR #14 has green mocked CI at head `75059fa36563c30883d79d9b0390d5ceecb7f366` ([run 39595766564](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39595766564), 98/98 tests). It enforces a 40-device per-announcement cap, eight concurrent sends, a five-second provider timeout, manual redirect handling, and a 10-device-per-account cap. This is code/test evidence only.
 
 - [ ] Before staging, generate/configure VAPID public/private keys and a valid `mailto:` subject through owner-managed Worker settings; never commit the private key or put it in frontend code.
 - [ ] On the approved staging origin, verify `GET /api/push/public-key` returns the public key only when the server-side VAPID configuration is valid.
