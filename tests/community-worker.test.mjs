@@ -2060,3 +2060,115 @@ test("admin with a temporary password cannot access account management before ch
     error: "Change your temporary password before continuing."
   });
 });
+
+
+test("push public key is unavailable until server-side VAPID is configured", async () => {
+  const response = await worker.fetch(request("/api/push/public-key", {
+    headers:{Origin:origin}
+  }), env);
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{publicKey:null});
+});
+
+test("push subscription registration requires authentication and server configuration", async () => {
+  const unauthenticated = await worker.fetch(request("/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,"Content-Type":"application/json"}
+  }), env);
+  assert.equal(unauthenticated.status,401);
+
+  const unconfigured = await worker.fetch(request("/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"}
+  }), authenticatedEnv(memberSession));
+  assert.equal(unconfigured.status,503);
+  assert.deepEqual(await unconfigured.json(),{error:"Internal server error."});
+});
+
+test("push subscription cannot be reassigned from another account", async () => {
+  const publicBytes = Buffer.alloc(65);
+  publicBytes[0] = 4;
+  const privateBytes = Buffer.alloc(32, 7);
+  const clientBytes = Buffer.alloc(65);
+  clientBytes[0] = 4;
+  const authBytes = Buffer.alloc(16, 9);
+  const pushEnv = {
+    ...authenticatedEnv(memberSession),
+    VAPID_PUBLIC_KEY:publicBytes.toString("base64url"),
+    VAPID_PRIVATE_KEY:privateBytes.toString("base64url"),
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first:async()=>memberSession,
+              run:async()=>sql.includes("INSERT INTO push_subscriptions")
+                ? {success:true,meta:{changes:0}}
+                : {success:true,meta:{changes:1}}
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({
+      endpoint:"https://fcm.googleapis.com/fcm/send/existing-endpoint",
+      keys:{p256dh:clientBytes.toString("base64url"),auth:authBytes.toString("base64url")}
+    })
+  }),pushEnv);
+  assert.equal(response.status,409);
+  assert.deepEqual(await response.json(),{
+    error:"This browser subscription is already linked to another account. Sign in to that account and disable notifications before linking it here."
+  });
+});
+
+test("push subscription can be refreshed by its owning account", async () => {
+  const publicBytes = Buffer.alloc(65);
+  publicBytes[0] = 4;
+  const privateBytes = Buffer.alloc(32, 7);
+  const clientBytes = Buffer.alloc(65);
+  clientBytes[0] = 4;
+  const authBytes = Buffer.alloc(16, 9);
+  let insertSql = "";
+  let insertValues = [];
+  const pushEnv = {
+    ...env,
+    VAPID_PUBLIC_KEY:publicBytes.toString("base64url"),
+    VAPID_PRIVATE_KEY:privateBytes.toString("base64url"),
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first:async()=>memberSession,
+              run:async()=>{
+                if (sql.includes("INSERT INTO push_subscriptions")) {
+                  insertSql=sql;
+                  insertValues=values;
+                }
+                return {success:true,meta:{changes:1}};
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(new Request("https://api.example.test/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({
+      endpoint:"https://fcm.googleapis.com/fcm/send/owned-endpoint",
+      keys:{p256dh:clientBytes.toString("base64url"),auth:authBytes.toString("base64url")}
+    })
+  }),pushEnv);
+  assert.equal(response.status,201);
+  assert.match(insertSql,/ON CONFLICT\(endpoint\) DO UPDATE SET p256dh=excluded\.p256dh,auth=excluded\.auth WHERE push_subscriptions\.user_id=excluded\.user_id/);
+  assert.equal(insertValues[1],memberSession.id);
+  assert.deepEqual(await response.json(),{ok:true});
+});
