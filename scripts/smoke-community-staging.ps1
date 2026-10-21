@@ -58,6 +58,11 @@ try {
     throw "Administrator login or role check failed."
   }
 
+  Write-Host "Checking role separation for administrator credentials..."
+  $wrongAdminRole = Invoke-WebRequest -Method POST -Uri "$BaseUrl/api/member/login" -ContentType "application/json" -Body (@{ username = $AdminUsername; password = $AdminPassword } | ConvertTo-Json -Compress) -TimeoutSec 30 -SkipHttpErrorCheck
+  if ($wrongAdminRole.StatusCode -ne 401) { throw "Administrator credentials were accepted by the member login route." }
+  $wrongAdminRole = $null
+
   Write-Host "Creating a test member..."
   $memberBody = @{
     username = $MemberUsername
@@ -75,6 +80,14 @@ try {
   if (-not $memberSession.token -or $memberSession.user.role -ne "member" -or $memberSession.mustChangePassword -ne $true) {
     throw "Member login did not enforce the expected temporary-password change."
   }
+
+  Write-Host "Checking role separation for member credentials and API access..."
+  $wrongMemberRole = Invoke-WebRequest -Method POST -Uri "$BaseUrl/api/admin/login" -ContentType "application/json" -Body (@{ username = $MemberUsername; password = $MemberTempPassword } | ConvertTo-Json -Compress) -TimeoutSec 30 -SkipHttpErrorCheck
+  if ($wrongMemberRole.StatusCode -ne 401) { throw "Member credentials were accepted by the administrator login route." }
+  $wrongMemberRole = $null
+  $memberAdminApi = Invoke-WebRequest -Method GET -Uri "$BaseUrl/api/admin/users" -Headers @{ Authorization = "Bearer $($memberSession.token)" } -TimeoutSec 30 -SkipHttpErrorCheck
+  if ($memberAdminApi.StatusCode -ne 403) { throw "A member session was not rejected by the administrator-only API." }
+  $memberAdminApi = $null
 
   Write-Host "Changing the test member password and verifying session revocation..."
   $oldMemberToken = $memberSession.token
