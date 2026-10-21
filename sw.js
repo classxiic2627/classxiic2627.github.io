@@ -1,0 +1,32 @@
+self.addEventListener("push", event => {
+  let data = {title:"The Archive", body:"There's something new in the class archive.", url:"/"}; 
+  try { if (event.data) data = {...data, ...event.data.json()}; } catch (_) {}
+  event.waitUntil(self.registration.showNotification(data.title || "The Archive", {
+    body: data.body || "There's something new in the class archive.",
+    icon: "images/icon-192.png",
+    badge: "images/icon-192.png",
+    data: {url: data.url || "/"},
+    tag: data.tag || "class-archive-update"
+  }));
+});
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  let requestedTarget;
+  try {
+    requestedTarget = new URL(event.notification.data?.url || "/", self.location.origin);
+  } catch {
+    requestedTarget = new URL("/", self.location.origin);
+  }
+  // Notification payloads must never navigate an archive tab off-origin.
+  const target = requestedTarget.origin === self.location.origin
+    ? requestedTarget.href
+    : new URL("/", self.location.origin).href;
+  event.waitUntil(clients.matchAll({type:"window", includeUncontrolled:true}).then(list => {
+    const existing = list.find(client => {
+      try { return new URL(client.url).origin === self.location.origin; }
+      catch { return false; }
+    });
+    if (existing) { existing.navigate(target); return existing.focus(); }
+    return clients.openWindow(target);
+  }));
+});

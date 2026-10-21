@@ -1,0 +1,285 @@
+name: Community Hub checks
+
+on:
+  pull_request:
+    paths:
+      - "community.js"
+      - "community.html"
+      - "sw.js"
+      - "package.json"
+      - "wrangler.example.toml"
+      - "wrangler.local.example.toml"
+      - ".gitignore"
+      - "backend/**"
+      - "tests/**"
+      - "scripts/**"
+      - ".github/workflows/community-checks.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "community.js"
+      - "community.html"
+      - "sw.js"
+      - "package.json"
+      - "wrangler.example.toml"
+      - "wrangler.local.example.toml"
+      - ".gitignore"
+      - "backend/**"
+      - "tests/**"
+      - "scripts/**"
+      - ".github/workflows/community-checks.yml"
+
+permissions:
+  contents: read
+
+# Keep only the newest pending validation for a given PR/ref. This avoids
+# wasting runner capacity on stale commits while preserving main-branch checks.
+concurrency:
+  group: community-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  syntax-and-schema:
+    name: JavaScript syntax and SQL schema
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Ensure local credentials and filled configs are not tracked
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
+
+          tracked = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")
+          forbidden = {
+              "wrangler.toml",
+              "wrangler.local.toml",
+              ".dev.vars",
+              ".local-demo-credentials.txt",
+              ".env",
+          }
+          leaked = sorted(
+              path for path in tracked
+              if path in forbidden or (path.startswith(".env.") and path != ".env.example")
+          )
+          if leaked:
+              raise SystemExit(f"Local secrets/configuration must not be tracked: {leaked}")
+
+          ignore = Path(".gitignore").read_text(encoding="utf-8").splitlines()
+          required = {"wrangler.toml", "wrangler.local.toml", ".dev.vars", ".env", ".env.*", "!.env.example", ".local-demo-credentials.txt"}
+          missing = sorted(required - set(ignore))
+          if missing:
+              raise SystemExit(f".gitignore is missing required local-secret patterns: {missing}")
+          print("Local credentials and filled configuration are not tracked; ignore rules are present.")
+          PY
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check JavaScript syntax
+        run: npm run check
+      - name: Run Worker tests
+        run: npm test
+      - name: Run local D1 account-flow smoke test
+        shell: bash
+        run: |
+          npm install --no-save --package-lock=false wrangler@4
+          export SETUP_SECRET="CI-local-setup-secret-not-for-production-2026"
+          printf 'SETUP_SECRET="%s"\n' "$SETUP_SECRET" > .dev.vars
+          npx wrangler d1 migrations apply community-hub-local --local --config wrangler.local.example.toml
+          npx wrangler dev --local --config wrangler.local.example.toml --ip 127.0.0.1 --port 8787 > /tmp/community-worker.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 45); do
+            if curl --silent --show-error --fail http://127.0.0.1:8787/api/announcements >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/community-worker.log
+            echo "Local Wrangler Worker did not become ready." >&2
+            exit 1
+          fi
+          LOCAL_API_URL="http://127.0.0.1:8787" \
+          LOCAL_SETUP_SECRET="$SETUP_SECRET" \
+          LOCAL_ADMIN_USERNAME="ci-local-admin" \
+          LOCAL_ADMIN_EMAIL="ci-local-admin@example.test" \
+          LOCAL_ADMIN_PASSWORD="CI-Local-Admin-Password-123!" \
+          npm run smoke:local
+      - name: Check Community Hub DOM references
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          import re
+
+          class IdParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.ids = []
+
+              def handle_starttag(self, tag, attrs):
+                  for key, value in attrs:
+                      if key == "id" and value:
+                          self.ids.append(value)
+
+          parser = IdParser()
+          parser.feed(Path("community.html").read_text(encoding="utf-8"))
+          duplicates = sorted({item for item in parser.ids if parser.ids.count(item) > 1})
+          js = Path("community.js").read_text(encoding="utf-8")
+          references = set(re.findall(r'\$\("([^"]+)"\)', js))
+          missing = sorted(references - set(parser.ids))
+          if duplicates or missing:
+              raise SystemExit(f"Duplicate HTML ids: {duplicates}; missing JS targets: {missing}")
+          print(f"DOM references OK: {len(references)} JavaScript targets found.")
+          PY
+      - name: Validate D1 schema with SQLite
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          import tomllib
+          from pathlib import Path
+
+          connection = sqlite3.connect(":memory:")
+          schema = Path("backend/schema.sql").read_text(encoding="utf-8")
+          connection.executescript(schema)
+
+          migration_connection = sqlite3.connect(":memory:")
+          for migration_path in sorted(Path("backend/migrations").glob("*.sql")):
+              migration_connection.executescript(migration_path.read_text(encoding="utf-8"))
+
+          def schema_objects(db):
+              return list(db.execute(
+                  "SELECT type, name, tbl_name, sql FROM sqlite_master "
+                  "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+              ))
+
+          if schema_objects(connection) != schema_objects(migration_connection):
+              raise SystemExit("Initial D1 migration does not match backend/schema.sql.")
+
+          reservation_sql = (
+              "INSERT INTO auth_attempts(key_hash,attempted_at) "
+              "SELECT ?,? WHERE (SELECT COUNT(*) FROM auth_attempts "
+              "WHERE key_hash=? AND attempted_at>?) < ?"
+          )
+          window_now = 2_000_000_000
+          for _ in range(10):
+              inserted = connection.execute(
+                  reservation_sql, ("rate-test", window_now, "rate-test", window_now - 900, 10)
+              )
+              if inserted.rowcount != 1:
+                  raise SystemExit("Atomic auth reservation blocked an attempt below the configured threshold.")
+          blocked = connection.execute(
+              reservation_sql, ("rate-test", window_now, "rate-test", window_now - 900, 10)
+          )
+          if blocked.rowcount != 0:
+              raise SystemExit("Atomic auth reservation admitted an attempt at the configured threshold.")
+
+          expected = {"users", "sessions", "content", "announcements", "push_subscriptions", "auth_attempts", "upload_reservations"}
+          actual = {
+              row[0] for row in connection.execute(
+                  "SELECT name FROM sqlite_master WHERE type='table'"
+              )
+          }
+          missing = expected - actual
+          if missing:
+              raise SystemExit(f"Missing schema tables: {sorted(missing)}")
+
+          try:
+              connection.execute(
+                  "INSERT INTO users(username,email,display_name,role,password_hash) VALUES(?,?,?,?,?)",
+                  ("invalid-role", "invalid@example.test", "Invalid Role", "superuser", "not-a-real-hash"),
+              )
+          except sqlite3.IntegrityError:
+              pass
+          else:
+              raise SystemExit("Users table accepted an invalid role.")
+
+          connection.execute(
+              "INSERT INTO users(username,email,display_name,role,password_hash) VALUES(?,?,?,?,?)",
+              ("schema-test", "schema-test@example.test", "Schema Test", "member", "not-a-real-hash"),
+          )
+          try:
+              connection.execute(
+                  "INSERT INTO users(username,email,display_name,role,password_hash) VALUES(?,?,?,?,?)",
+                  ("SCHEMA-TEST", "duplicate@example.test", "Duplicate Test", "admin", "not-a-real-hash"),
+              )
+          except sqlite3.IntegrityError:
+              pass
+          else:
+              raise SystemExit("Username uniqueness is not case-insensitive.")
+
+          try:
+              connection.execute(
+                  "INSERT INTO users(username,email,display_name,role,password_hash) VALUES(?,?,?,?,?)",
+                  ("email-duplicate", "SCHEMA-TEST@EXAMPLE.TEST", "Duplicate Email", "member", "not-a-real-hash"),
+              )
+          except sqlite3.IntegrityError:
+              pass
+          else:
+              raise SystemExit("Email uniqueness is not case-insensitive.")
+
+          print(f"Schema and all ordered migrations match: {len(expected)} expected tables and core constraints validated.")
+
+          wrangler_template = Path("wrangler.example.toml").read_text(encoding="utf-8")
+          required_config = [
+              'ALLOWED_ORIGIN = "https://REPLACE_WITH_APPROVED_STAGING_ORIGIN"',
+              'GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID"',
+              'GOOGLE_DRIVE_FOLDER_ID = "REPLACE_WITH_DEDICATED_DRIVE_FOLDER_ID"',
+              'crons = ["17 3 * * *"]',
+              'binding = "DB"',
+              'migrations_dir = "backend/migrations"',
+              'REPLACE_WITH_VERIFIED_STAGING_D1_DATABASE_ID',
+              'GOOGLE_CLIENT_SECRET',
+              'GOOGLE_REFRESH_TOKEN',
+          ]
+          missing_config = [value for value in required_config if value not in wrangler_template]
+          if missing_config:
+              raise SystemExit(f"Wrangler staging template is missing required Google Drive/D1 entries: {missing_config}")
+
+          parsed_config = tomllib.loads(wrangler_template)
+          if parsed_config["vars"].get("ALLOWED_ORIGIN") != "https://REPLACE_WITH_APPROVED_STAGING_ORIGIN":
+              raise SystemExit("Wrangler ALLOWED_ORIGIN placeholder is not the expected staging-only value.")
+          if parsed_config["triggers"].get("crons") != ["17 3 * * *"]:
+              raise SystemExit("Wrangler staging template must declare the expected daily Cron Trigger.")
+          if parsed_config["d1_databases"][0].get("migrations_dir") != "backend/migrations":
+              raise SystemExit("Wrangler D1 migration directory does not match the repository.")
+          if "r2_buckets" in parsed_config:
+              raise SystemExit("The staging template must use Google Drive, not R2.")
+          local_config = tomllib.loads(Path("wrangler.local.example.toml").read_text(encoding="utf-8"))
+          if local_config["vars"].get("ALLOWED_ORIGIN") != "http://127.0.0.1:8000":
+              raise SystemExit("Local Wrangler template must use the documented local site origin.")
+          if local_config["d1_databases"][0].get("database_name") != "community-hub-local":
+              raise SystemExit("Local Wrangler template must use a separate local D1 database.")
+          if "r2_buckets" in local_config:
+              raise SystemExit("The local template must use Google Drive, not R2.")
+          print("Staging and local Wrangler TOML parse with isolated D1 and Google Drive configuration.")
+          PY
+
+  windows-local-demo-script:
+    name: Validate Windows local demo script
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Parse PowerShell demo script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'scripts/demo-local.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+          Write-Host "PowerShell local demo script syntax is valid."

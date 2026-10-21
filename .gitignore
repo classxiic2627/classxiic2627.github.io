@@ -1,0 +1,14 @@
+# Local Worker configuration: never commit real database IDs or bucket names.
+wrangler.toml
+wrangler.local.toml
+.dev.vars
+.env
+.env.*
+!.env.example
+
+# Local tooling artifacts
+node_modules/
+.wrangler/
+
+# Generated local demo credentials; never commit them
+.local-demo-credentials.txt

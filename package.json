@@ -1,0 +1,14 @@
+{
+  "name": "class-xii-c-community-hub",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node --check community.js && node --check backend/worker.js && node --check backend/google-drive.js && node --check sw.js && node --check scripts/local-smoke-test.mjs && node --check scripts/create-google-drive-folder.mjs",
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "smoke:local": "node scripts/local-smoke-test.mjs",
+    "demo:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/demo-local.ps1"
+  }
+}

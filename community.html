@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10101a">
+  <meta name="description" content="Share class memories and read announcements in the Class XII C Archive.">
+  <!-- Set this to the verified Worker origin only after staging setup; leave blank until then. -->
+  <meta name="community-api-base" content="">
+  <title>Community Hub — The Archive</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .community-main{max-width:1080px;margin:0 auto;padding:48px 22px 80px}
+    .community-heading{margin-bottom:30px}.community-heading h1{font:700 clamp(2.2rem,6vw,4rem) var(--display);line-height:1.08;margin:.3rem 0 1rem}.community-heading h1 span{color:var(--purple)}
+    .community-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:clamp(18px,3vw,30px);margin:22px 0}
+    .community-panel h2{font:600 1.5rem var(--display);margin-top:0}.community-form{display:grid;gap:14px;max-width:650px}.community-form label{display:grid;gap:6px;color:var(--muted);font-size:.92rem}
+    .community-form input,.community-form textarea,.community-form select{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit}
+    .community-form textarea{min-height:100px;resize:vertical}.community-form input:focus,.community-form textarea:focus,.community-form select:focus{outline:2px solid var(--purple)}
+    .community-actions{display:flex;gap:10px;flex-wrap:wrap}.button-danger{background:#6c2935;color:#fff;border:0;cursor:pointer;border-radius:999px;padding:9px 16px;font:inherit}
+    .community-status{color:var(--orange);min-height:1.5em}.community-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px}
+    .community-card{overflow:hidden;border:1px solid var(--line);border-radius:16px;background:var(--panel2)}.community-card img,.community-card video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:#08080d}.community-card-body{padding:14px}.community-card h3,.announcement h3{margin:0 0 6px}.community-card p,.announcement p{color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+    .announcement-list{display:grid;gap:12px}.announcement{padding:16px;border:1px solid var(--line);border-radius:14px}.announcement small{display:block;color:var(--muted);margin-top:8px}
+    .admin-item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}.admin-item p{margin:4px 0 0;color:var(--muted);font-size:.9rem}
+    [hidden]{display:none!important}.community-nav{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:22px}.community-nav a{color:var(--purple)}
+  </style>
+  <script src="community.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="The Archive home"><span class="brand-mark">A</span><span>THE <b>ARCHIVE</b></span></a>
+    <nav class="nav community-nav" aria-label="Community navigation"><a href="index.html">Home</a><a href="gallery.html">Gallery</a><a href="#share">Share a memory</a><a href="#admin">Admin</a></nav>
+  </header>
+  <main class="community-main">
+    <div class="community-heading"><div class="eyebrow">CLASS XII C · COMMUNITY</div><h1>Keep the <span>memories</span> coming.</h1><p>Share class moments and check the latest announcements.</p><p><strong>Visibility:</strong> Posts are public to anyone who can access this website and are published immediately. Do not upload sensitive personal information.</p><p><strong>Removal:</strong> Uploaders cannot delete their own posts. The designated class archive administrator can remove posts; contact them through your usual class communication channel to request removal.</p></div>
+    <section class="community-panel" aria-labelledby="announcementsTitle"><h2 id="announcementsTitle">Class announcements</h2><div id="announcementList" class="announcement-list"><p>Loading announcements…</p></div></section>
+    <section class="community-panel" id="share" aria-labelledby="shareTitle">
+      <h2 id="shareTitle">Share a memory</h2>
+      <p>Sign in with your individual member or administrator account to contribute a photo or video. Uploaded posts are publicly visible on this website, and uploaders cannot delete their own posts.</p>
+      <form id="memberLogin" class="community-form"><label>Username<input id="memberUsername" type="text" autocomplete="username" maxlength="64" required></label><label>Password<input id="memberPassword" type="password" autocomplete="current-password" required maxlength="256"></label><button class="button button-primary" type="submit">Sign in</button></form>
+      <p id="memberStatus" class="community-status" role="status" aria-live="polite"></p>
+      <div id="memberSessionActions" class="community-actions" hidden><button class="button button-ghost" id="showMemberPasswordChange" type="button">Change password</button><button class="button button-ghost" id="memberLogout" type="button">Sign out</button></div>
+      <form id="memberPasswordChange" class="community-form" hidden>
+        <h3>Change your password</h3>
+        <label>Current password<input id="memberCurrentPassword" type="password" autocomplete="current-password" maxlength="256" required></label>
+        <label>New password (at least 12 characters)<input id="memberNewPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
+        <label>Confirm new password<input id="memberConfirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
+        <div class="community-actions"><button class="button button-primary" type="submit">Save new password</button><button class="button button-ghost" id="cancelMemberPasswordChange" type="button">Cancel</button></div>
+      </form>
+      <form id="uploadForm" class="community-form" hidden>
+        <label>Media type<select id="uploadType" required><option value="image">Photo</option><option value="video">Video</option></select></label>
+        <label>Photo or video<input id="uploadMedia" type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/ogg" required></label>
+        <label>Title<input id="uploadTitle" type="text" maxlength="120" required></label>
+        <label>Caption<textarea id="uploadCaption" maxlength="1000" placeholder="Add a little context (optional)"></textarea></label>
+        <div class="community-actions"><button class="button button-primary" type="submit">Publish memory</button></div>
+        <small>Maximum file size: 50 MiB. Posts are published immediately and are public. Only the class archive administrator can remove a post; uploaders cannot delete their own uploads.</small>
+      </form>
+    </section>
+    <section class="community-panel" aria-labelledby="memoriesTitle"><h2 id="memoriesTitle">Community memories</h2><p id="publicStatus" class="community-status" role="status" aria-live="polite"></p><div id="publicItems" class="community-grid"><p>Loading memories…</p></div></section>
+    <section class="community-panel" id="admin" aria-labelledby="adminTitle">
+      <h2 id="adminTitle">Admin desk</h2>
+      <p>For the designated class archive administrator.</p>
+      <form id="adminLogin" class="community-form"><label>Admin username<input id="adminUsername" type="text" autocomplete="username" maxlength="64" required></label><label>Admin password<input id="adminPassword" type="password" autocomplete="current-password" required maxlength="256"></label><button class="button button-primary" type="submit">Admin sign in</button></form>
+      <p id="adminStatus" class="community-status" role="status" aria-live="polite"></p>
+      <form id="adminPasswordChange" class="community-form" hidden>
+        <h3>Change administrator password</h3>
+        <label>Current password<input id="adminCurrentPassword" type="password" autocomplete="current-password" maxlength="256" required></label>
+        <label>New password (at least 12 characters)<input id="adminNewPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
+        <label>Confirm new password<input id="adminConfirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="256" required></label>
+        <div class="community-actions"><button class="button button-primary" type="submit">Save new password</button><button class="button button-ghost" id="cancelAdminPasswordChange" type="button">Cancel</button></div>
+      </form>
+      <div id="adminSessionActions" class="community-actions" hidden><button id="showAdminPasswordChange" class="button button-ghost" type="button">Change admin password</button><button id="adminLogout" class="button button-ghost" type="button">Admin sign out</button></div>
+      <div id="adminArea" hidden>
+        <h3>Student accounts</h3>
+        <p>Create individual accounts for students. Temporary passwords are shown only to the administrator who creates or resets them; share them privately.</p>
+        <form id="accountForm" class="community-form">
+          <input id="accountId" type="hidden">
+          <label>Username<input id="accountUsername" maxlength="64" autocomplete="off" required></label>
+          <label>Email<input id="accountEmail" type="email" maxlength="254" autocomplete="off" required></label>
+          <label>Display name<input id="accountDisplayName" maxlength="100" required></label>
+          <label id="accountTempPasswordLabel">Temporary password (at least 12 characters)<input id="accountTempPassword" type="password" minlength="12" maxlength="256" autocomplete="new-password" required></label>
+          <div class="community-actions"><button id="accountSaveButton" class="button button-primary" type="submit">Create student account</button><button id="accountCancelEdit" class="button button-ghost" type="button" hidden>Cancel edit</button></div>
+        </form>
+        <div id="accountList"><p>Student accounts will appear here after sign-in.</p></div>
+        <form id="accountResetForm" class="community-form" hidden>
+          <h4>Reset temporary password</h4>
+          <input id="accountResetId" type="hidden">
+          <p id="accountResetLabel"></p>
+          <label>New temporary password (at least 12 characters)<input id="accountResetPassword" type="password" minlength="12" maxlength="256" autocomplete="new-password" required></label>
+          <div class="community-actions"><button class="button button-primary" type="submit">Reset password and sign out this account</button><button id="accountCancelReset" class="button button-ghost" type="button">Cancel</button></div>
+        </form>
+        <h3>Published posts</h3><p>Use the controls below to remove posts when needed. Uploaders cannot remove their own posts.</p><div id="adminItems"></div>
+        <h3>Post an announcement</h3>
+        <form id="announcementForm" class="community-form"><label>Title<input id="announcementTitle" maxlength="120" required></label><label>Announcement<textarea id="announcementBody" maxlength="3000" required></textarea></label><button class="button button-primary" type="submit">Publish announcement</button></form>
+
+      </div>
+    </section>
+    <section class="community-panel"><h2>Notifications</h2><p>Browser push notifications are not active yet. No notification permission will be requested.</p><button id="subscribeButton" class="button button-ghost" type="button">Check notification status</button><p id="pushStatus" class="community-status" role="status"></p></section>
+  </main>
+  <footer class="site-footer"><p>THE ARCHIVE · CLASS XII C</p><a href="index.html">Back to the archive ↗</a></footer>
+</body>
+</html>
