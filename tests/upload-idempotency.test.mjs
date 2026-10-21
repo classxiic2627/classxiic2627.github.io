@@ -93,6 +93,7 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
                 }
                 if (sql.includes("SET state='reconciliation_required'")) {
                   reservation.state = "reconciliation_required";
+                  if (sql.includes("drive_file_id=?")) reservation.drive_file_id = values[0];
                   return {meta:{changes:1}};
                 }
                 if (sql.includes("SET state='processing'")) {
@@ -253,6 +254,7 @@ test("failed Drive cleanup after D1 insert failure enters reconciliation-require
                 }
                 if (sql.includes("SET state='reconciliation_required'")) {
                   reservation.state = "reconciliation_required";
+                  if (sql.includes("drive_file_id=?")) reservation.drive_file_id = values[0];
                   return {meta:{changes:1}};
                 }
                 if (sql.includes("SET state='processing'")) {
