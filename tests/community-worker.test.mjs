@@ -2078,3 +2078,44 @@ test("push subscription registration requires authentication and server configur
   assert.equal(unconfigured.status,503);
   assert.deepEqual(await unconfigured.json(),{error:"Internal server error."});
 });
+
+test("push subscription cannot be reassigned from another account", async () => {
+  const publicBytes = Buffer.alloc(65);
+  publicBytes[0] = 4;
+  const privateBytes = Buffer.alloc(32, 7);
+  const clientBytes = Buffer.alloc(65);
+  clientBytes[0] = 4;
+  const authBytes = Buffer.alloc(16, 9);
+  const pushEnv = {
+    ...authenticatedEnv(memberSession),
+    VAPID_PUBLIC_KEY:publicBytes.toString("base64url"),
+    VAPID_PRIVATE_KEY:privateBytes.toString("base64url"),
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind(...values) {
+            return {
+              first:async()=>memberSession,
+              run:async()=>sql.includes("INSERT INTO push_subscriptions")
+                ? {success:true,meta:{changes:0}}
+                : {success:true,meta:{changes:1}}
+            };
+          }
+        };
+      }
+    }
+  };
+  const response = await worker.fetch(request("/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({
+      endpoint:"https://fcm.googleapis.com/fcm/send/existing-endpoint",
+      keys:{p256dh:clientBytes.toString("base64url"),auth:authBytes.toString("base64url")}
+    })
+  }),pushEnv);
+  assert.equal(response.status,409);
+  assert.deepEqual(await response.json(),{
+    error:"This browser subscription is already linked to another account. Sign in to that account and disable notifications before linking it here."
+  });
+});
