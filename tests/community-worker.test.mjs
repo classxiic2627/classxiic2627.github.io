@@ -1672,6 +1672,17 @@ test("keeps the 50 MiB upload cap aligned across Worker, browser, UI, and docs",
   assert.doesNotMatch(readmeSource, /Do not upload photos\/videos without permission/i);
 });
 
+test("rotates the upload retry key when any payload field changes", () => {
+  const clientSource = readFileSync(new URL("../community.js", import.meta.url), "utf8");
+  assert.match(clientSource, /\["uploadType", "change"\]/);
+  assert.match(clientSource, /\["uploadTitle", "input"\]/);
+  assert.match(clientSource, /\["uploadCaption", "input"\]/);
+  assert.match(clientSource, /\["uploadMedia", "change"\]/);
+  assert.match(clientSource, /addEventListener\(eventName, \(\) => \{ pendingUploadKey = ""; \}\)/);
+  assert.match(clientSource, /if \(!pendingUploadKey\) pendingUploadKey = crypto\.randomUUID\(\)/);
+  assert.match(clientSource, /pendingUploadKey = "";\s*\$\("uploadForm"\)\.reset\(\)/);
+});
+
 test("rejects multipart uploads over the 50 MiB limit from declared length before parsing", async () => {
   const req = new Request("https://api.example.test/api/content", {
     method: "POST",
