@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
 import { isPushConfigured, sendWebPush } from "../backend/web-push.js";
 
-const encoder = new TextEncoder();
 const b64url = bytes => Buffer.from(bytes).toString("base64url");
 
 async function keys() {
@@ -49,5 +48,15 @@ test("Web Push rejects non-HTTPS endpoints before network requests", async () =>
       throw new Error("network must not be called");
     }),
     /HTTPS/
+  );
+});
+
+test("Web Push rejects arbitrary HTTPS hosts to prevent server-side request forgery", async () => {
+  const pair = await keys();
+  await assert.rejects(
+    sendWebPush({...pair.subscription,endpoint:"https://attacker.example/collect"}, {}, pair.env, async () => {
+      throw new Error("network must not be called");
+    }),
+    /provider is not supported/
   );
 });
