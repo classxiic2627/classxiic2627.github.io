@@ -49,7 +49,7 @@ This procedure is manual and staging-only. The implementation still needs tests 
 - Same key submitted concurrently does not create two Drive files.
 - Same key + different user is isolated; one user's key cannot reveal or reuse another user's upload.
 - Same key + changed payload returns 409 without a second Drive write.
-- Added deterministic regression test: simulate Drive committing a file while the final PUT response is lost; retry reconciles the existing Drive file and creates no duplicate. This test still needs a green CI run.
+- Added deterministic regression test: simulate Drive committing a file while the final PUT response is lost; retry reconciles the existing Drive file and creates no duplicate. Exact-head CI run [39576803930](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39576803930) passes all 82 Worker tests, including a binary-distinct payload rejection case.
 - Simulate a worker restart between Drive commit and D1 metadata commit; reconciliation still succeeds.
 - Simulate Drive lookup timeout, eventual-consistency delay, malformed app properties, wrong parent folder, and D1 outage; fail closed and leave a visible reconciliation state rather than creating another file or deleting an unverified file.
 - Existing successful upload, MIME/signature validation, 50 MiB file limit, request-size limit, authorization, admin-only removal, and orphan cleanup regressions remain green.
