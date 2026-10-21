@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { webcrypto } from "node:crypto";
 import { runInNewContext } from "node:vm";
 import worker from "../backend/worker.js";
 
@@ -2061,6 +2062,84 @@ test("admin with a temporary password cannot access account management before ch
   });
 });
 
+
+test("announcement push fan-out is bounded and reports delivery results", async () => {
+  const vapid = await webcrypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);
+  const publicRaw = new Uint8Array(await webcrypto.subtle.exportKey("raw",vapid.publicKey));
+  const privateJwk = await webcrypto.subtle.exportKey("jwk",vapid.privateKey);
+  const client = await webcrypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
+  const clientRaw = new Uint8Array(await webcrypto.subtle.exportKey("raw",client.publicKey));
+  const b64url = value => Buffer.from(value).toString("base64url");
+  const subscriptions = Array.from({length:16},(_,index)=>({
+    endpoint:"https://fcm.googleapis.com/fcm/send/test-"+index,
+    p256dh:b64url(clientRaw),
+    auth:b64url(webcrypto.getRandomValues(new Uint8Array(16)))
+  }));
+  const fanoutEnv = {
+    ...env,
+    VAPID_PUBLIC_KEY:b64url(publicRaw),
+    VAPID_PRIVATE_KEY:privateJwk.d,
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind() {
+            return {
+              first:async()=>adminSession,
+              run:async()=>({success:true,meta:{changes:1}})
+            };
+          },
+          all:async()=>sql.includes("FROM push_subscriptions")
+            ? {results:subscriptions}
+            : {results:[]}
+        };
+      }
+    }
+  };
+  let active=0;
+  let maxActive=0;
+  let providerCalls=0;
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async (_url,init={})=>{
+    assert.equal(init.method,"POST");
+    assert.equal(init.redirect,"manual");
+    assert.ok(init.signal instanceof AbortSignal);
+    active++;
+    providerCalls++;
+    maxActive=Math.max(maxActive,active);
+    await new Promise(resolve=>setTimeout(resolve,5));
+    active--;
+    return new Response(null,{status:201});
+  };
+  let response;
+  try {
+    response=await worker.fetch(request("/api/admin/announcements",{
+      method:"POST",
+      headers:{
+        Origin:origin,
+        Authorization:"Bearer "+"m".repeat(64),
+        "Content-Type":"application/json"
+      },
+    }),fanoutEnv);
+    // request() has no body parameter; build the POST request with the required payload.
+    if(response.status===400) {
+      response=await worker.fetch(new Request("https://api.example.test/api/admin/announcements",{
+        method:"POST",
+        headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+        body:JSON.stringify({title:"Class update",body:"New announcement"})
+      }),fanoutEnv);
+    }
+  } finally {
+    globalThis.fetch=originalFetch;
+  }
+  assert.equal(response.status,201);
+  const result=await response.json();
+  assert.equal(result.notifications.sent,16);
+  assert.equal(result.notifications.failed,0);
+  assert.equal(result.notifications.expired,0);
+  assert.equal(providerCalls,16);
+  assert.equal(maxActive,8,"provider requests must be sent in batches of eight or fewer");
+});
 
 test("push public key is unavailable until server-side VAPID is configured", async () => {
   const response = await worker.fetch(request("/api/push/public-key", {
