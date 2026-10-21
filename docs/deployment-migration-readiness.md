@@ -1,0 +1,173 @@
+# Deployment and D1 Migration Readiness
+
+Related checklist: [Push and upload release gates](push-upload-release-gates.md) tracks the remaining fan-out/timeout, near-limit memory, real-provider, and staging acceptance work.
+
+## Latest review checkpoint — 2026-10-21
+
+- **Foundation PR #1:** current head `ea4c1c2d9dc3087c7c876fd293e2fb40de96c5e5`, exact-head CI [39599177460](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39599177460) passed both jobs and 87/87 Worker tests. The owner-approved 50 MiB media / 51 MiB request cap is restored. Fingerprinting processes 1 MiB-or-smaller chunks, with tests for bounded chunks, repeatability, changed-byte sensitivity, pinned known vectors, empty input, and malformed slice lengths. Code review is approved for integration; actual near-limit Worker memory, real Drive fault injection, and staging acceptance remain release gates. Do not interpret review approval as merge/deployment approval.
+- **Push integration PR #14:** head `75059fa36563c30883d79d9b0390d5ceecb7f366`, exact-head CI [39595766564](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39595766564) passed 98/98 tests, but its base SHA remains stale at `f5f011d0c7b8cb15586b449689b0b551136ec56a` while the foundation is now `ea4c1c2d9dc3087c7c876fd293e2fb40de96c5e5`. Eren requested changes; refresh/rebase the stacked branch and rerun merge-context CI before merge.
+- **Staging smoke PR #11:** the missing authenticated `GET /api/admin/health` preflight is now implemented in commit `b7b1eb4f8bd2776203ff3a7760280cb95adbcb14`; exact-head CI [39597793087](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39597793087) passed both jobs. It now checks authenticated D1/Google Drive readiness after admin login and before creating the test member or uploading media. The PR remains a draft on a stale base and must be re-stacked/rebased onto the current foundation before final review; no remote staging run has occurred.
+- **Readiness docs:** latest release-gate note records the near-limit memory and real-provider verification gates; the upload-cap policy mismatch has been resolved by restoring the recorded 50 MiB limit. No staging credentials/resources are available in this workflow, so no live Drive or push verification has occurred.
+
+## Additional work in progress — browser push
+
+As of 2026-10-21, browser push is implemented in clean stacked draft [PR #14](https://github.com/classxiic2627/classxiic2627.github.io/pull/14), based on the current upload-idempotency foundation. Latest exact integration head `75059fa36563c30883d79d9b0390d5ceecb7f366` passed Actions run [39595766564](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39595766564): both jobs green, 98/98 tests. Subscription keys are validated before D1 reads, and the 10-device account cap is enforced atomically, including a concurrent last-slot regression. Subscription-list failures mark all known recipients skipped rather than leaving the delivery summary ambiguous. Announcement fan-out is capped at 40 randomly selected devices per announcement, bounded to eight concurrent provider sends, with a five-second timeout, redirect blocking, batched expired-endpoint cleanup, and explicit sent/failed/expired/skipped counts. Each account can register at most 10 notification devices. The suite verifies VAPID JWT signatures/audience, decrypts the generated `aes128gcm` record with a client key, rejects arbitrary HTTPS endpoints, prevents subscription ownership reassignment, tests partial delivery/cap accounting, and aborts a never-resolving provider request. This is automated/mock evidence only, not real push-provider delivery.
+
+This does **not** change the release gate: PR #14 is open and not merged; no VAPID keys are configured, no real browser/provider delivery has been tested, and the published frontend remains disconnected from a deployed Worker. Do not mark the system production-ready from CI alone. Continue to require verified no-cost staging eligibility, owner-managed credentials, real Drive and push verification, D1 inventory/backup/restore, near-limit upload-memory checks, and separate explicit production approval.
+
+
+**Status: BLOCKED — review only; not deployment approval.**  
+**Latest code/docs checkpoint (2026-10-21):** `ea4c1c2d9dc3087c7c876fd293e2fb40de96c5e5`; exact-head [Actions run 39599177460](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39599177460) passed both jobs with **87/87 Worker tests**. The feature branch now includes D1 upload reservations, server-computed payload fingerprints, stable Drive `appProperties`, fail-closed recovery after an ambiguous final upload response, and migration `0002_upload_reservations.sql`. The deterministic regression test simulates Drive committing while the final PUT response is lost, then confirms retry recovery creates no duplicate, completed retries reuse the same item, and changed metadata or binary content returns 409; concurrent same-key retries are serialized so an active upload is not reconciled or deleted. The feature branch also documents a staging-only stale-reservation operator runbook. This is mocked evidence only; real isolated-staging Drive fault injection and near-limit memory verification remain launch gates. This commit also adds a staging-only stale-reservation operator runbook: read-only D1 inventory, verified Drive app-property/folder checks, same-payload retry for a unique recovered file, and a fail-closed rule against resetting/deleting when Drive absence is ambiguous.
+
+**Owner policy decisions recorded in Issue #3:** no pre-upload consent requirement; posts publish immediately and are public; uploaders cannot delete their own posts; the administrator can remove posts; no aggregate per-member quota. Staging approval is limited to no-cost/free-tier resources; stop and ask before anything potentially billable. Real Drive/staging remains unverified.  
+**Reviewed feature head:** `76ebcc57f2e9f81aeb6c4c809b77ce0749a695cf`  
+**Exact-head Actions run:** [39599177460](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39599177460) — passed: 87/87 Worker tests, including lost-response recovery; JavaScript syntax; isolated local D1 account-flow smoke; DOM-reference checks; SQLite schema parity against all ordered migrations; Wrangler template validation; and Windows PowerShell syntax parsing. The latest test changes replace a fragile escaped regex in the upload-cap documentation assertion with a direct substring assertion, extend the local D1 smoke to check that members are denied admin account-management access, relogin issues a session token, and password change/account disablement revoke existing sessions, and align the upload-cap assertion with the `50 MiB` UI copy. A policy-alignment assertion verifies the UI states admin-only removal, says uploaders cannot delete their own uploads, and does not reinstate a consent requirement, matching the owner's explicit decision. The backend README was also aligned to that owner decision, and the cross-layer test now fails if stale pre-upload-consent instructions return. A new mocked deletion test confirms member sessions receive 403 on the admin-only media deletion route and no Drive/D1 delete is attempted. The Drive adapter regression now exercises the FixedLengthStream branch and asserts the outgoing Content-Length header. The opt-in real-Drive smoke now also checks authenticated D1/Drive readiness before attempting upload/read/delete. The latest code uses Cloudflare `FixedLengthStream` where available to preserve content length for streamed resumable Drive uploads; the adapter test now exercises that branch with a fixed-length stream double and asserts the outgoing `Content-Length`. The browser and Worker upload-limit error messages consistently use `MiB`, guarded by a cross-layer assertion. Session URL validation requires the exact HTTPS Google API origin and `/upload/drive/v3/files` path, with regression tests for cross-origin and unexpected same-origin URLs. Authenticated accounts can upload through the API; the shared upload form is available to signed-in members and admins after any forced password change. The latest README documents the expanded local smoke coverage; the 128 MB Worker memory ceiling and near-50 MiB staging upload verification remain explicit launch gates. Exact-head CI passed; real Drive/staging verification is still required. This verifies automated CI/local D1 only, not real Drive or staging.  
+**Code PR:** [#1 — Build the Community Hub API and secure upload foundation](https://github.com/classxiic2627/classxiic2627.github.io/pull/1)  
+**Readiness PR:** [#2 — Add deployment and D1 migration readiness review](https://github.com/classxiic2627/classxiic2627.github.io/pull/2)
+
+This document is an evidence checklist. It does not authorize merging, deployment, account initialization, live D1 migration, changing Google credentials, or provisioning paid resources.
+
+## 1. Scope and current evidence
+
+The owner narrowed the deliverable to **add a login/account system to the existing site and use Google Drive for new uploaded media**, without rebuilding the existing website or changing unrelated features.
+
+At latest reviewed feature head `76ebcc57f2e9f81aeb6c4c809b77ce0749a695cf`:
+
+- Earlier heads exposed regressions while separating liveness from dependency readiness; the fix aligns the OAuth rejection regression test with authenticated `GET /api/admin/health`. Current exact-head run [39599177460](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39599177460) passed **87/87 Worker tests** and all configured CI checks, including the isolated local D1 account-flow smoke, Windows PowerShell syntax validation, and local-credential tracking guard. The local demo checks its fixed loopback ports before migration and confirms the Worker process remains alive during readiness polling. Its latest smoke assertions verify members cannot access admin account management, relogin after password change returns a session token, and password change/account disablement revoke existing member sessions. The shared upload form is available to both members and admins, and upload errors appear in the status area beside that form. The Drive adapter now uses `FixedLengthStream` in deployed Workers to preserve the known length of streamed resumable uploads. The API and shared upload form permit either authenticated role (member or admin) to upload after that account completes any forced password change. The request-size guard now counts bytes while parsing multipart input, avoiding an additional full-request copy. The parsed File object still occupies memory, so the 50 MiB maximum requires a real near-limit staging upload and memory check. This still does not verify real Google Drive or deployed staging.
+- The Worker implements individual admin/member accounts, one-time CLI-only admin setup, password hashing, session expiry/revocation, temporary-password change, admin member management, announcements, and upload/read/delete routes.
+- `backend/google-drive.js` is the canonical Google Drive adapter. It uses server-side OAuth refresh-token credentials, keeps Drive files private, proxies file content through the Worker, stores Drive file IDs in D1 metadata, and supports health/upload/read/delete operations.
+- `tests/google-drive-adapter.test.mjs` and `tests/google-drive-delete.test.mjs` exercise the Worker routes with fake Google API responses and mock D1 objects. These are automated contract/regression tests, **not** real Google Drive or live D1 verification.
+- `scripts/local-smoke-test.mjs` and `wrangler.local.example.toml` provide a repeatable local D1 account-flow test. In the earlier passing run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369), CI applied migrations to Wrangler's isolated local D1, started a local Worker, and passed setup, admin login, member creation, temporary-password login, password change, relogin, rejection of the old password, and test-member disablement. **Local D1 account flow is verified in CI.** The optional real Drive health/upload/read/delete test was skipped because no real credentials/folder were supplied.
+- `community.html` keeps the `community-api-base` meta value blank. The published frontend is therefore **not connected to a deployed Worker**. For easier local demonstration, `community.js` falls back to `http://127.0.0.1:8787` only when served over plain HTTP from `127.0.0.1`, matching the local CORS origin; the published hostname does not match this fallback.
+- `scripts/demo-local.ps1` automates the Windows local-demo setup: it creates/uses ignored local-only credentials, applies migrations only to Wrangler local D1, starts the Worker on loopback, and serves the Community page from a temporary allowlisted directory containing only `community.html`, `community.js`, and `styles.css`. The temporary directory is removed on exit, so `.dev.vars`, generated credentials, and local Wrangler config are not served by the static server. The script's syntax is parsed on `windows-latest` in the exact-head workflow; this validates syntax, not a full Windows end-to-end run of the interactive launcher. The smoke script also attempts to disable its generated test member after a mid-flow assertion failure; exact-head CI verifies the normal success path, not every possible cleanup failure.
+- No approved Google OAuth client/refresh token/folder, deployed staging Worker, or verified staging D1 was supplied or tested in this review. No real Drive upload/read/delete has been demonstrated.
+
+**Evidence labels:** automated CI = verified at the exact head above; isolated local D1 account-flow smoke = verified in CI; real Google Drive upload/read/delete = not verified (the opt-in real-Drive test was skipped); Cloudflare staging = not verified; production = not approved.
+
+## 2. Required decisions and launch blockers
+
+### Google Drive and media privacy
+
+- [ ] The owner must provide/securely configure an approved Google OAuth client ID, client secret, refresh token with the required Drive scope, and a dedicated Drive folder accessible to the authorized account. Never put secrets in browser code, HTML, Git, comments, screenshots, or committed TOML.
+- [ ] Verify the real account can access the chosen folder and perform upload, read, and delete using a dedicated test folder/account. Mocked tests do not prove OAuth consent configuration, refresh-token durability, folder permissions, quota, or provider behavior.
+- [x] **Media visibility decision recorded by the owner in Issue #3:** everyone may view class posts/media, with or without an account. The current public `GET /api/content`, `GET /api/announcements`, and `GET /api/media/:id` routes match that decision; Drive objects remain private and are proxied through the Worker. This records the policy choice, not staging verification. Each public media read currently proxies to Drive and uses private-cache headers rather than a shared edge cache, so repeated reads can consume Drive API quota. Verify usage/rate limits on staging and decide any shared-cache policy together with removal invalidation.
+- [x] **Publication/removal policy recorded by the owner in Issue #3:** no pre-upload consent requirement; uploads publish immediately and are public; uploaders cannot delete their own posts; the administrator can remove posts. The Community page copy was aligned in feature commit `73fe9760d03fbd938b69fa30af07e9024e786646`. This records the owner's policy choice, not a privacy recommendation. No moderation queue exists.
+- [x] **Upload-size policy and implementation aligned:** the owner approved 50 MiB per media upload (51 MiB maximum total multipart request including overhead). The Worker limit, browser-side validation, visible UI text, API documentation, and both declared-length and streamed-without-Content-Length boundary tests now use that limit. Exact-head CI passed 81/81 Worker tests, including admin-upload, streamed-size-guard, cross-layer upload-cap consistency, and member-denied-admin-media-delete regressions; real Drive/staging remains unverified.
+- [x] **Aggregate quota decision recorded by the owner in Issue #3:** no per-member aggregate quota. No total-byte, file-count, or upload-frequency limit is implemented, in accordance with that decision. Unlimited uploads increase storage and Google Drive/provider-quota risk; verify provider usage and deployed edge-level rate limits on staging. Do not add a quota without a new owner decision.
+- [ ] **Verify near-limit upload memory on staging before launch.** The Worker isolate memory ceiling is 128 MB. The new streaming request-size guard avoids a second full-request buffer, but the multipart parser still materializes the file. Test a near-50 MiB upload on the approved staging plan; if memory pressure appears, consult the owner on a lower cap or a streaming file-part parser.
+- [ ] Keep the cross-store failure path observable. If Drive upload succeeds but D1 insertion fails, the Worker attempts Drive deletion; failed cleanup requires orphan reconciliation. Deletion removes the Drive object before the D1 row so a Drive failure leaves retryable metadata. D1 and Drive are not transactional together; current failure-injection tests use mocks.
+
+### Local demo and staging
+
+#### Run the login + real local D1 demo on Windows
+
+This is a local-only demo of the existing site UI and Worker backed by Wrangler's isolated local D1 database. It does not require a Cloudflare account, remote database, Google credentials, or paid resources. Use disposable demo credentials only.
+
+**Fastest Windows option:** run `npm run demo:local` from the repository root in PowerShell. It creates/reuses ignored local demo credentials, applies migrations to Wrangler's local D1, starts the Worker and static server on loopback, and opens the site. It does not deploy or contact a remote Cloudflare database. Use the manual commands below only if you want to inspect each step.
+
+**Terminal 1 — prepare and start the local API** (from the repository root, on Node.js 22 or newer):
+
+```powershell
+if (-not (Test-Path wrangler.local.toml)) {
+  Copy-Item wrangler.local.example.toml wrangler.local.toml
+}
+
+# Preserve existing Google/local values in .dev.vars; replace only SETUP_SECRET.
+$varsPath = ".dev.vars"
+$existingVars = if (Test-Path $varsPath) { Get-Content $varsPath -Raw } else { "" }
+$setupLine = 'SETUP_SECRET="Local-Demo-Setup-Secret-2026-Change-Me"'
+if ($existingVars -match '(?m)^SETUP_SECRET=.*$') {
+  $existingVars = [regex]::Replace($existingVars, '(?m)^SETUP_SECRET=.*$', [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $setupLine })
+} else {
+  $existingVars = $existingVars.TrimEnd() + [Environment]::NewLine + $setupLine + [Environment]::NewLine
+}
+Set-Content -Path $varsPath -Value $existingVars -Encoding ascii
+
+# Migrate only Wrangler's isolated LOCAL D1 database, then start the local Worker.
+npx --yes wrangler@4 d1 migrations apply community-hub-local --local --config wrangler.local.toml
+if ($LASTEXITCODE -ne 0) { throw "Local D1 migration failed; do not continue." }
+npx --yes wrangler@4 dev --local --config wrangler.local.toml --ip 127.0.0.1 --port 8787
+```
+
+Leave that terminal running. The local config uses a separate local D1 database and has no remote database ID. Keep `wrangler.local.toml` and `.dev.vars` uncommitted.
+
+
+**Terminal 2 — initialize the disposable demo admin and verify the account flow**:
+
+```powershell
+$env:LOCAL_API_URL = "http://127.0.0.1:8787"
+$env:LOCAL_SETUP_SECRET = "Local-Demo-Setup-Secret-2026-Change-Me"
+$env:LOCAL_ADMIN_USERNAME = "demo-admin"
+$env:LOCAL_ADMIN_EMAIL = "demo-admin@example.test"
+$env:LOCAL_ADMIN_PASSWORD = "Local-Demo-Admin-Password-123!"
+npm run smoke:local
+```
+
+The smoke script prints each successful step. It verifies first-admin setup (or checks the existing demo admin on a repeat run), admin login, student creation, temporary-password login, forced password change, successful re-login, rejection of the old temporary password, and disabling the generated test student.
+
+**Terminal 3 — serve only public website files (never serve the repository root)**:
+
+```powershell
+$demoSite = Join-Path $env:TEMP "class-xii-c-community-static"
+New-Item -ItemType Directory -Force $demoSite | Out-Null
+Copy-Item community.html,community.js,styles.css,index.html,gallery.html,script.js,sw.js -Destination $demoSite
+foreach ($dir in @("images","gallery","games","vimages")) {
+  if (Test-Path $dir) { Copy-Item $dir -Destination $demoSite -Recurse -Force }
+}
+python -m http.server 8000 --bind 127.0.0.1 --directory $demoSite
+```
+
+Open [http://127.0.0.1:8000/community.html](http://127.0.0.1:8000/community.html). Sign in to the admin desk with the disposable demo-admin credentials above. Create a separate demo student from the admin desk, then test the student login and required temporary-password change. You can also publish an announcement and confirm it appears in the public list; both use the local D1 database. Stop the local Worker and static server with Ctrl+C when finished. The temporary static directory contains only the selected public site files; it does not contain `.dev.vars`, local credentials, backend code, or repository configuration.
+
+**One-command launcher:** the feature branch includes `npm run demo:local`. It creates/reuses ignored disposable admin credentials, migrates only Wrangler's local D1, starts the Worker, copies only `community.html`, `community.js`, and `styles.css` into a unique temporary directory, and serves that directory on loopback. It does not serve repository-root secrets/config. The launcher has not been executed end-to-end on a Windows workstation as part of this review. Earlier CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369) parsed the PowerShell script on a Windows runner; the separate main job verifies the Worker/account flow against local D1. These checks do not claim the launcher itself was executed end-to-end.
+
+**Known local-demo limits:** the real Google Drive upload/read/delete check is opt-in and will fail closed without owner-configured Google OAuth credentials and a dedicated test folder. Do not treat a successful account-flow smoke test as proof of Drive access or Cloudflare staging. The published site remains disconnected until a verified, approved Worker URL is configured.
+
+- [x] The documented local D1 account-flow smoke passed in Actions run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369) using Wrangler's isolated local D1 and `npm run smoke:local`. The run verified setup/admin login/member creation/temporary-password gate/password change/relogin/old-password rejection and test-account disabling. This is not a deployed staging test and does not verify the owner's workstation.
+- [ ] Record real Google Drive verification separately. The CI smoke test deliberately skipped external Drive access; health and media operations remain fail-closed until authorized OAuth credentials and folder access are configured.
+- [x] Staging is approved only for no-cost/free-tier resources, and the owner selected a **brand-new, empty staging D1** for isolation. Do not create it until the Cloudflare account/resource cost is verified as no-cost; stop and ask if anything may incur a charge. Keep production untouched. Once no-cost eligibility is confirmed, create only the empty staging database, apply the initial migration there, prepare a dedicated Drive test folder/account, configure Worker secrets privately, and set the exact approved static-site origin in `ALLOWED_ORIGIN`.
+- [ ] Set the frontend `community-api-base` meta value only to a verified Worker HTTPS origin after staging checks. Do not guess the URL or publish localhost.
+- [ ] Verify staging health, setup, admin login, member creation, temporary-password gate, password change, invalid credentials, disable/re-enable, session revocation, upload/read/delete, CORS, request limits, rate limiting, and dependency-failure behavior.
+- [ ] Verify the Cron Trigger is actually configured and runs the cleanup handler; a TOML declaration alone is not deployment evidence.
+- [ ] Configure and verify edge-level rate limiting in staging. The app's tests do not prove real D1 concurrency or deployed edge controls.
+- [ ] Keep staging within no-cost/free-tier resources. If any resource or test could incur charges, stop and obtain separate owner approval before proceeding. Do not merge/deploy, initialize production accounts, create/rotate credentials, or run remote migrations without the appropriate explicit approval.
+
+## 3. D1 inventory and migration safety
+
+No live D1 database was inspected. Before planning a migration, identify the exact database and environment, obtain a read-only schema/migration-history inventory, and confirm whether the target is empty or contains existing data.
+
+`backend/migrations/0001_initial.sql` is the initial schema for a **new empty D1 database**. It is not a migration for an existing database. `CREATE TABLE IF NOT EXISTS` does not reconcile existing table columns or constraints with the Worker’s expectations. Do not apply `backend/schema.sql` blindly to a live database.
+
+Before any approved migration:
+
+1. Confirm the exact target D1 name/ID and whether it is staging or production.
+2. Inspect `sqlite_master`, table columns, indexes, unique constraints, foreign keys, migration history, and row counts without exporting unnecessary personal data into review comments.
+3. Create an access-controlled backup/export and verify it can be restored; rehearse recovery against a non-production copy.
+4. Design an ordered, forward-only migration from the observed schema, preserving existing rows and relationships. Resolve duplicate usernames/emails and invalid required fields before applying uniqueness/foreign-key constraints.
+5. Apply the reviewed migration to isolated staging, verify schema and row counts, and test the Worker against it.
+6. Obtain explicit owner approval for any production migration. A D1 backup does not back up Drive files; media reconciliation and removal procedures must be documented separately.
+
+## 4. Security and operational notes
+
+- Admin setup is intentionally CLI/trusted-tool only. `X-Setup-Secret` must remain out of browser CORS and frontend state. Rotate/remove `SETUP_SECRET` immediately after successful initialization.
+- Passwords are hashed with PBKDF2-SHA-256 and per-password salts; session bearer tokens are stored as hashes. Account lifecycle and forced-password-change paths have mock regression tests.
+- Layered application throttling uses a 100-attempt/15-minute IP-and-role ceiling and a 10-attempt/15-minute per-account bucket. This reduces collateral lockout behind shared school Wi-Fi but means someone who knows a username can intentionally trigger temporary account lockout. Confirm the trade-off and add monitoring/edge limits before launch.
+- **Health contract implemented and covered by passing CI:** public `GET /api/health` is a cheap liveness response and does not query D1, refresh OAuth, or call Google Drive. Admin-authenticated `GET /api/admin/health` checks D1 + Drive readiness after authentication and the forced-password-change gate; unexpected D1 errors during session lookup map to service-unavailable responses while intentional authentication failures retain their 401/403 status. Current exact-head run [39599177460](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39599177460) passed 87/87 Worker tests and the configured local checks. Real Google OAuth/Drive and deployed staging remain unverified.
+- Request bodies are bounded by streamed byte counts, and allowed media types have basic signature checks. These checks are not full media decoding or malware scanning.
+- Web Push/VAPID delivery is implemented in open review PR [#14](https://github.com/classxiic2627/classxiic2627.github.io/pull/14). Exact integration head `a7a66135df3e9fb113ec4f614165bca63fdba2ca` passed [Actions run 39589662624](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39589662624), both jobs green and 96/96 tests. The tests cover VAPID signature and payload decryption, endpoint allowlisting/ownership, the 40-device fan-out cap, eight-send concurrency, partial delivery accounting, 10-device account cap, redirect blocking, and provider timeout. This is automated/mock evidence only; real browser/provider delivery remains unverified until approved staging.
+- The service-worker navigation tests constrain notification-click navigation to the archive origin, but that does not implement push delivery or prove deployment configuration.
+
+## 5. Release checklist
+
+- [x] Prior code head `446c68b3e335bd8384b3fdcfd3430148ad8e7763` passed run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369), including 71/71 automated tests and syntax/DOM/schema checks.
+- [x] Health-route split regressions fixed and verified on exact head `db27007f501ffdaf86937243ef44b28d3dce02dc`; run [39295875991](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39295875991) passed 73/73 tests and all configured CI checks.
+- [x] Local D1 smoke script passed in CI run [39291106369](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39291106369); real Google Drive remains unverified.
+- [ ] Verify real Google OAuth and Drive folder access using a dedicated test account/folder.
+- [x] Public-media visibility decision recorded: everyone can view class posts/media, with or without an account.
+- [x] Record the owner's publication/removal policy: uploads may be published without prior consent; they are public immediately; uploaders cannot delete their own posts; the administrator can remove posts.
+- [x] Record the owner's aggregate-quota decision: no aggregate per-member quota. Validate storage/provider usage and edge-level rate limiting during staging.
+- [ ] Inventory the target D1, verify backup/restore, and review a migration matched to the observed schema.
+- [ ] Verify staging end-to-end with isolated D1 and Drive resources, exact CORS/API origin, Cron Trigger, and edge rate limits.
+- [ ] Obtain explicit owner approval before merge/deployment or any production action.
+
+**Current decision: BLOCKED pending the unchecked evidence and owner decisions above.** The current code head is CI-green. Automated CI and isolated local D1 smoke still do not prove real Google Drive access, Cloudflare staging readiness, or permission to launch.
