@@ -270,6 +270,20 @@ function escapeHTML(value) {
 const classViews = [
   {
     type: "memory",
+    title: "Candid!",
+    text: "Our memories of during the farewell dance practice :D",
+    author: "Adarsh",
+    image: "vimages/adarsh2.jpeg"
+  },
+  {
+    type: "memory",
+    title: "Badminton",
+    text: "I and Krishna in the yard of the Indoor Stadium, Munger",
+    author: "Adarsh",
+    image: "vimages/adarsh1.jpeg"
+  },
+  {
+    type: "memory",
     title: "Sir, Carboxylic acid padh liya ",
     text: "Jab Alok Carboxylic acid padh liya aur che ka test de diya to Tiwari bola chalo Alok hum tumko nature se LOVE  karna sikhata hai kyuki ashal jindgi ma to koi tum se LOVE nahi karega",
     author: "Anonymous",
