@@ -18,7 +18,7 @@ import { fingerprintFile } from "./upload-fingerprint.js";
  * hashed with PBKDF2-SHA-256; bearer tokens are stored only as SHA-256 hashes.
  * Uploaded media is private in Google Drive and proxied through this Worker.
  */
-const MAX_MEDIA_BYTES = 15 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 const MAX_JSON_BYTES = 1024 * 1024;
 const MAX_UPLOAD_REQUEST_BYTES = MAX_MEDIA_BYTES + 1024 * 1024;
 const SESSION_DEFAULT_SECONDS = 12 * 60 * 60;
@@ -494,18 +494,18 @@ async function handle(request, env) {
     await requireChangedPassword(user);
     const mediaStore = driveStorage(env);
     // Count request bytes as the multipart parser consumes the stream; avoid
-    // buffering a 15 MiB video and then copying the full request in memory.
+    // buffering a 50 MiB video and then copying the full request in memory.
     const form = await readLimitedFormData(
       request,
       MAX_UPLOAD_REQUEST_BYTES,
-      "Upload request exceeds the 15 MiB media limit."
+      "Upload request exceeds the 50 MiB media limit."
     );
     const type = form.get("type");
     const title = cleanText(form.get("title"), 120, "Title", true);
     const caption = cleanText(form.get("caption"), 1000, "Caption");
     const file = form.get("media");
     if (!(file instanceof File)) fail("Choose an image or video to upload.");
-    if (file.size < 1 || file.size > MAX_MEDIA_BYTES) fail("Media must be between 1 byte and 15 MiB.", 413);
+    if (file.size < 1 || file.size > MAX_MEDIA_BYTES) fail("Media must be between 1 byte and 50 MiB.", 413);
     const mime = file.type.toLowerCase();
     const allowed = type === "image" ? ["image/jpeg","image/png","image/webp","image/gif"] :
       type === "video" ? ["video/mp4","video/webm","video/ogg"] : [];
