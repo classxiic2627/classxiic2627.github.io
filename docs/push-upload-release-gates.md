@@ -4,7 +4,7 @@
 
 ## Evidence snapshot — 2026-10-21
 
-- Foundation PR #1 head `473dab023918bc94ab006fe26b5f4d7ab99cacc0`: [Actions run 39598223344](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39598223344) passed both jobs and 86/86 Worker tests. Upload idempotency covers concurrent same-key requests and fail-closed recovery for ambiguous Drive results in mocked tests. The owner-approved 50 MiB file + 1 MiB multipart cap is restored; payload fingerprinting now processes 1 MiB slices and hashes their digests instead of materializing a full-file ArrayBuffer.
+- Foundation PR #1 head `f4d874a4ecf0f67d696dc61c7451bc25abf02f75`: [Actions run 39599023168](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39599023168) passed both jobs and 87/87 Worker tests. Upload idempotency covers concurrent same-key requests and fail-closed recovery for ambiguous Drive results in mocked tests. The owner-approved 50 MiB file + 1 MiB multipart cap is restored; payload fingerprinting processes 1 MiB slices and hashes their digests, with tests for bounded chunks, repeatability, changed-byte sensitivity, known vectors, empty input, and malformed slices.
 - Browser push PR #14 head `75059fa36563c30883d79d9b0390d5ceecb7f366`: [Actions run 39595766564](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39595766564) passed both jobs and 98/98 tests. The current head includes redirect blocking, a 40-device announcement cap, eight-way bounded concurrency, five-second provider abort timeout, batched expired-endpoint cleanup, explicit partial-delivery accounting, and an atomic 10-device-per-account subscription cap.
 - These are CI/mock results only. No live Drive fault injection, near-limit upload memory measurement, or real browser/provider push delivery has been verified.
 
@@ -27,7 +27,7 @@ The new `backend/upload-fingerprint.js` hashes fixed 1 MiB slices and then hashe
 
 ## Upload: remaining acceptance gates
 
-- [ ] **Near-limit memory:** the extra whole-file hashing buffer has been removed: `fingerprintFile(file)` processes 1 MiB slices and hashes their digests. The multipart parser still materializes the parsed File, and this custom versioned chunk-digest construction is not the standard SHA-256(file). Measure peak memory in an actual isolated Worker near the approved 50 MiB limit under the 128 MB isolate ceiling. Add a pinned known-vector test plus empty-file and malformed-slice tests before considering the fingerprint implementation fully reviewed.
+- [ ] **Near-limit memory:** the extra whole-file hashing buffer has been removed: `fingerprintFile(file)` processes 1 MiB slices and hashes their digests. Tests now pin the versioned construction and cover empty input and malformed slice length; the construction is intentionally not standard SHA-256(file). The multipart parser still materializes the parsed File. Measure peak memory in an actual isolated Worker near the approved 50 MiB limit under the 128 MB isolate ceiling before calling that cap safe.
 - [ ] **Real Drive ambiguity test:** In isolated staging, inject a lost final upload response after Drive accepts the file; prove the same-key retry links exactly one object, changed payload returns 409, and temporary listing inconsistency does not create a second upload.
 - [ ] Exercise D1 outage/restart and compensating-delete failure paths against isolated staging. Preserve fail-closed reconciliation; an empty/unavailable search is not proof that the upload never committed.
 
