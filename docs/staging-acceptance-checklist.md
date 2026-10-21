@@ -26,6 +26,8 @@ This checklist is for the first isolated, no-cost staging run of the existing Co
 
 - [ ] Inject: Drive upload succeeds, D1 metadata insert fails, and compensating Drive delete succeeds. Confirm an error is returned and no orphan remains.
 - [ ] Inject: Drive upload succeeds, D1 insert fails, and compensating Drive delete also fails. Confirm the request fails safely, emits a structured cleanup signal without secrets, and the orphan is discoverable for reconciliation.
+
+- Automated fault-injection coverage now exercises Drive upload success followed by D1 insert failure and Drive cleanup failure; it verifies the request fails safely and the cleanup signal identifies the item and Drive file without logging raw provider error text. This is mocked CI evidence, not a live Drive reconciliation test.
 - [ ] Document and exercise a safe orphan-reconciliation procedure scoped only to the dedicated test folder. Compare Drive file IDs with staging D1 metadata; never delete files outside the test folder or based on guesses.
 - [ ] Test interrupted resumable uploads, retry behavior, duplicate submissions, and cleanup after partial failure. Confirm retries do not silently publish duplicate media.
 - [ ] Test Drive read/delete failures and verify metadata remains in a state that supports safe retry.
