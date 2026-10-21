@@ -550,6 +550,20 @@ async function handle(request, env) {
       if (existing?.state === "completed") return json({ok:true,id:itemId}, 200, env.ALLOWED_ORIGIN);
       if (existing?.state === "retryable") fail("Upload is already being retried. Please retry shortly.", 503);
       if (existing && existing.state !== "retryable") {
+        // A prior attempt may have inserted D1 metadata before its reservation
+        // completion update failed. Repair that state without touching Drive.
+        const committedRow = await env.DB.prepare(
+          "SELECT media_key,media_mime,media_size FROM content WHERE id=? AND user_id=?"
+        ).bind(itemId, user.id).first();
+        if (committedRow) {
+          if (committedRow.media_mime !== mime || Number(committedRow.media_size) !== file.size) {
+            fail("Upload recovery needs administrator review.", 503);
+          }
+          await env.DB.prepare(
+            "UPDATE upload_reservations SET state='completed',drive_file_id=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND key_hash=?"
+          ).bind(committedRow.media_key, user.id, keyHash).run();
+          return json({ok:true,id:itemId}, 200, env.ALLOWED_ORIGIN);
+        }
         // The previous attempt may have committed in Drive but lost its reply.
         // Reconcile by stable Drive appProperties; never upload again merely
         // because a lookup returns no result (Drive listing is eventually consistent).
@@ -593,9 +607,6 @@ async function handle(request, env) {
     try {
       await env.DB.prepare("INSERT INTO content(id,user_id,type,title,caption,media_key,media_mime,media_size) VALUES(?,?,?,?,?,?,?,?)")
         .bind(itemId, user.id, type, title, caption, driveFileId, mime, file.size).run();
-      await env.DB.prepare(
-        "UPDATE upload_reservations SET state='completed',drive_file_id=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND key_hash=?"
-      ).bind(driveFileId, user.id, keyHash).run();
     } catch (error) {
       let cleaned = false;
       try { await mediaStore.delete(driveFileId); cleaned = true; }
@@ -613,6 +624,13 @@ async function handle(request, env) {
       }
       throw error;
     }
+    // Keep the Drive file and content row if this status write fails; the next
+    // retry repairs the reservation from the durable content metadata.
+    await env.DB.prepare(
+      "UPDATE upload_reservations SET state='completed',drive_file_id=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND key_hash=?"
+    ).bind(driveFileId, user.id, keyHash).run().catch(() => {
+      fail("Upload was saved and is being reconciled. Retry the same upload shortly.", 503);
+    });
     return json({ok:true, id:itemId}, 201, env.ALLOWED_ORIGIN);
   }
   if (request.method === "GET" && path.startsWith("/api/media/")) {
