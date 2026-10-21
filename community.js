@@ -145,6 +145,18 @@
       status("memberStatus", "Password changed and all sessions revoked. Please sign in again.");
     } catch (error) { status("memberStatus", error.message); }
   });
+  // A retry key belongs to one exact submission. Keep it after a failed
+  // request for safe retries, but rotate it as soon as the user edits payload
+  // fields so a changed file/form is not rejected with a stale-key 409.
+  for (const [fieldId, eventName] of [
+    ["uploadType", "change"],
+    ["uploadTitle", "input"],
+    ["uploadCaption", "input"],
+    ["uploadMedia", "change"]
+  ]) {
+    $(fieldId).addEventListener(eventName, () => { pendingUploadKey = ""; });
+  }
+
   $("uploadForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const token = uploadToken();
