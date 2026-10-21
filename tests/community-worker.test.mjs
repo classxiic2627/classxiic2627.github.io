@@ -2215,6 +2215,50 @@ test("push subscription cannot be reassigned from another account", async () => 
   });
 });
 
+test("push subscription registration enforces the per-account device cap", async () => {
+  const publicBytes=Buffer.alloc(65); publicBytes[0]=4;
+  const privateBytes=Buffer.alloc(32,7);
+  const clientBytes=Buffer.alloc(65); clientBytes[0]=4;
+  const authBytes=Buffer.alloc(16,9);
+  let insertAttempted=false;
+  const pushEnv={
+    ...env,
+    VAPID_PUBLIC_KEY:publicBytes.toString("base64url"),
+    VAPID_PRIVATE_KEY:privateBytes.toString("base64url"),
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind() {
+            return {
+              first:async()=>{
+                if (sql.includes("SELECT user_id FROM push_subscriptions")) return null;
+                if (sql.includes("SELECT COUNT(*) AS count FROM push_subscriptions")) return {count:10};
+                return memberSession;
+              },
+              run:async()=>{
+                if (sql.includes("INSERT INTO push_subscriptions")) insertAttempted=true;
+                return {success:true,meta:{changes:1}};
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const response=await worker.fetch(new Request("https://api.example.test/api/push/subscribe",{
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({
+      endpoint:"https://fcm.googleapis.com/fcm/send/new-endpoint",
+      keys:{p256dh:clientBytes.toString("base64url"),auth:authBytes.toString("base64url")}
+    })
+  }),pushEnv);
+  assert.equal(response.status,429);
+  assert.equal(insertAttempted,false);
+  assert.deepEqual(await response.json(),{error:"An account can register up to 10 notification devices."});
+});
+
 test("push subscription can be refreshed by its owning account", async () => {
   const publicBytes = Buffer.alloc(65);
   publicBytes[0] = 4;
