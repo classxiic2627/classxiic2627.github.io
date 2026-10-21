@@ -91,6 +91,7 @@ export async function sendWebPush(subscription,payload,env,fetchImpl=fetch) {
   const response = await fetchImpl(endpoint.href,{
     method:"POST",
     redirect:"manual",
+    signal:AbortSignal.timeout(5000),
     headers:{
       Authorization:"vapid t="+token+", k="+env.VAPID_PUBLIC_KEY,
       "Content-Encoding":"aes128gcm",
