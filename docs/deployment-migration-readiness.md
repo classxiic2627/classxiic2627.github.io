@@ -1,5 +1,7 @@
 # Deployment and D1 Migration Readiness
 
+Related checklist: [Push and upload release gates](push-upload-release-gates.md) tracks the remaining fan-out/timeout, near-limit memory, real-provider, and staging acceptance work.
+
 ## Additional work in progress — browser push
 
 As of 2026-10-21, browser push is implemented in clean stacked draft [PR #14](https://github.com/classxiic2627/classxiic2627.github.io/pull/14), based on the current upload-idempotency foundation. Prior exact integration head `d2d120464387e8b52707c7234eb3d375a5680b26` passed Actions run [39585915082](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39585915082): both jobs green, 92/92 tests. Follow-up hardening disables redirects from push endpoints so a provider endpoint cannot redirect the Worker fetch past the host allowlist; exact-head run [39586181284](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39586181284) passed both jobs with 92/92 tests. Older PRs #7, #12, and #13 are obsolete and should not be used as integration targets. The suite verifies VAPID JWT signatures/audience, decrypts the generated `aes128gcm` record with a client key, rejects arbitrary HTTPS endpoints, prevents subscription ownership reassignment, and checks redirect protection. This is automated/mock evidence only, not real push-provider delivery.
