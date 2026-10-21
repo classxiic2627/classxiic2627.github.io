@@ -716,14 +716,22 @@ async function handle(request, env) {
     const announcement = cleanText(body.body, 3000, "Announcement", true);
     const announcementId = id();
     await env.DB.prepare("INSERT INTO announcements(id,user_id,title,body) VALUES(?,?,?,?)").bind(announcementId,user.id,title,announcement).run();
-    let notifications = {configured:isPushConfigured(env),sent:0,failed:0,expired:0};
+    let notifications = {configured:isPushConfigured(env),sent:0,failed:0,expired:0,skipped:0,total:0};
     if (notifications.configured) {
       try {
-        const subscriptions = (await env.DB.prepare("SELECT ps.endpoint,ps.p256dh,ps.auth FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.disabled=0").all()).results || [];
+        const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.disabled=0").first();
+        notifications.total = Math.max(0,Number(countRow?.total || 0));
+        // Hard cap one announcement at 40 provider requests to stay below
+        // common free-tier subrequest limits even when some endpoints expire.
+        // Random selection avoids permanently excluding the same devices when
+        // the class has more active subscriptions than one request can cover.
+        const subscriptions = (await env.DB.prepare(
+          "SELECT ps.endpoint,ps.p256dh,ps.auth FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id " +
+          "WHERE u.disabled=0 ORDER BY RANDOM() LIMIT 40"
+        ).all()).results || [];
+        notifications.skipped = Math.max(0,notifications.total - subscriptions.length);
         const outcomes = [];
         const expiredEndpoints = [];
-        // Keep concurrent provider requests bounded so a large class does not
-        // fan out an unbounded burst from one announcement request.
         const concurrency = 8;
         for (let offset = 0; offset < subscriptions.length; offset += concurrency) {
           const batch = subscriptions.slice(offset, offset + concurrency);
