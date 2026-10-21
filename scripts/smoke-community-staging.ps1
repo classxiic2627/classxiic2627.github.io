@@ -70,8 +70,10 @@ try {
     displayName = $MemberDisplayName
     temporaryPassword = $MemberTempPassword
   } | ConvertTo-Json -Compress
-  Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/admin/users" -Headers @{ Authorization = "Bearer $($adminSession.token)" } -ContentType "application/json" -Body $memberBody -TimeoutSec 30 | Out-Null
+  $createdMember = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/admin/users" -Headers @{ Authorization = "Bearer $($adminSession.token)" } -ContentType "application/json" -Body $memberBody -TimeoutSec 30
   $memberBody = $null
+  if (-not $createdMember.id) { throw "Admin member creation did not return the test member ID." }
+  $MemberId = $createdMember.id
 
   Write-Host "Checking member temporary-password enforcement..."
   $memberLoginBody = @{ username = $MemberUsername; password = $MemberTempPassword } | ConvertTo-Json -Compress
@@ -100,6 +102,9 @@ try {
   $oldPasswordResponse = Invoke-WebRequest -Method POST -Uri "$BaseUrl/api/member/login" -ContentType "application/json" -Body (@{ username = $MemberUsername; password = $MemberTempPassword } | ConvertTo-Json -Compress) -TimeoutSec 30 -SkipHttpErrorCheck
   if ($oldPasswordResponse.StatusCode -ne 401) { throw "The old temporary password remained valid after password change." }
   $memberSession = $null
+  $createdMember = $null
+  $MemberId = $null
+  $disabledSessionResponse = $null
   $oldMemberToken = $null
 
   $memberLoginBody = @{ username = $MemberUsername; password = $MemberNewPassword } | ConvertTo-Json -Compress
@@ -107,6 +112,22 @@ try {
   $memberLoginBody = $null
   if (-not $memberSession.token -or $memberSession.mustChangePassword -ne $false) {
     throw "Member could not sign in with the changed password."
+  }
+
+  Write-Host "Checking administrator disable/re-enable and session revocation..."
+  $disableBody = @{ disabled = $true } | ConvertTo-Json -Compress
+  Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/admin/users/$MemberId/status" -Headers @{ Authorization = "Bearer $($adminSession.token)" } -ContentType "application/json" -Body $disableBody -TimeoutSec 30 | Out-Null
+  $disabledSessionResponse = Invoke-WebRequest -Method GET -Uri "$BaseUrl/api/admin/users" -Headers @{ Authorization = "Bearer $($memberSession.token)" } -TimeoutSec 30 -SkipHttpErrorCheck
+  if ($disabledSessionResponse.StatusCode -ne 401) { throw "Disabling the member did not revoke/reject its existing session." }
+  $disabledSessionResponse = $null
+  $disableBody = @{ disabled = $false } | ConvertTo-Json -Compress
+  Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/admin/users/$MemberId/status" -Headers @{ Authorization = "Bearer $($adminSession.token)" } -ContentType "application/json" -Body $disableBody -TimeoutSec 30 | Out-Null
+  $memberSession = $null
+  $memberLoginBody = @{ username = $MemberUsername; password = $MemberNewPassword } | ConvertTo-Json -Compress
+  $memberSession = Invoke-RestMethod -Method POST -Uri "$BaseUrl/api/member/login" -ContentType "application/json" -Body $memberLoginBody -TimeoutSec 30
+  $memberLoginBody = $null
+  if (-not $memberSession.token -or $memberSession.mustChangePassword -ne $false) {
+    throw "Re-enabled member could not sign in again."
   }
 
   Write-Host "Testing real staging Drive upload, public read, and admin-only delete..."
