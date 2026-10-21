@@ -447,5 +447,3 @@
   }
   loadPublicContent();
 })();
-
-})();
