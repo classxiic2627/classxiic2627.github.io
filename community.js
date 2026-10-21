@@ -363,11 +363,16 @@
   $("announcementForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
-      await api("/api/admin/announcements", {method:"POST", body:JSON.stringify({
+      const published = await api("/api/admin/announcements", {method:"POST", body:JSON.stringify({
         title:$("announcementTitle").value.trim(), body:$("announcementBody").value.trim()
       })}, adminToken);
       $("announcementForm").reset();
-      status("adminStatus", "Announcement published. Push notifications are not active yet.");
+      const delivery = published.notifications;
+      let message = "Announcement published.";
+      if (!delivery || !delivery.configured) message += " Push delivery is not configured on the server.";
+      else if (delivery.sent === 0 && delivery.failed === 0) message += " No registered push subscriptions yet.";
+      else message += " Push notifications sent: " + delivery.sent + "; failed: " + delivery.failed + ".";
+      status("adminStatus", message);
       await loadPublicContent();
     } catch (error) { status("adminStatus", error.message); }
   });
