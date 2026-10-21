@@ -145,9 +145,16 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   const originalFetch = globalThis.fetch;
   globalThis.fetch = env.__googleFetch;
   let first;
+  let noMatchRetry;
   let second;
   try {
     first = await worker.fetch(request(form()),env);
+    // Drive listing can lag behind a successful upload. A no-match result must
+    // remain fail-closed; it must never trigger a second Drive upload.
+    const committedFile = driveFile;
+    driveFile = null;
+    noMatchRetry = await worker.fetch(request(form()),env);
+    driveFile = committedFile;
     second = await worker.fetch(request(form()),env);
     const changed = form();
     changed.set("title", "Different title");
@@ -296,26 +303,10 @@ test("failed Drive cleanup after D1 insert failure enters reconciliation-require
   const originalFetch = globalThis.fetch;
   globalThis.fetch = env.__googleFetch;
   let first;
-  let noMatchRetry;
   let second;
-  let third;
-  let changedPayload;
-  let changedBytesPayload;
   try {
     first = await worker.fetch(request(form()),env);
-    // Drive listing can lag behind a successful upload. A no-match result must
-    // remain fail-closed; it must never trigger a second Drive upload.
-    const committedFile = driveFile;
-    driveFile = null;
-    noMatchRetry = await worker.fetch(request(form()),env);
-    driveFile = committedFile;
     second = await worker.fetch(request(form()),env);
-    third = await worker.fetch(request(form()),env);
-    const changed = form();
-    changed.set("title", "Different title");
-    changedPayload = await worker.fetch(request(changed),env);
-    const alteredBytes = Uint8Array.from([...png.slice(0, 8), 0x01]);
-    changedBytesPayload = await worker.fetch(request(form(alteredBytes)),env);
   } finally {
     globalThis.fetch = originalFetch;
   }
