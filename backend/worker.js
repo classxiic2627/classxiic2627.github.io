@@ -12,6 +12,8 @@ import { sendWebPush, isPushConfigured } from "./web-push.js";
  * Required secrets/vars:
  *   SETUP_SECRET (secret; long random value, used once to initialize accounts)
  *   ALLOWED_ORIGIN (exact site origin)
+ *   VAPID_PUBLIC_KEY / VAPID_SUBJECT (push notification variables)
+ *   VAPID_PRIVATE_KEY (secret; optional until push notifications are enabled)
  *   SESSION_TTL_SECONDS (optional; defaults to 12 hours)
  *
  * This API never ships credentials to the browser. Passwords are salted and
