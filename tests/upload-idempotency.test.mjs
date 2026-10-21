@@ -76,6 +76,16 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
                   reservation.drive_file_id = values[0];
                   return {meta:{changes:1}};
                 }
+                if (sql.includes("SET state='reconciliation_required'")) {
+                  reservation.state = "reconciliation_required";
+                  return {meta:{changes:1}};
+                }
+                if (sql.includes("SET state='processing'")) {
+                  const expectedState = sql.includes("state='reconciliation_required'") ? "reconciliation_required" : "retryable";
+                  if (reservation.state !== expectedState) return {meta:{changes:0}};
+                  reservation.state = "processing";
+                  return {meta:{changes:1}};
+                }
                 if (sql.includes("SET state='retryable'")) {
                   reservation.state = "retryable";
                   return {meta:{changes:1}};
