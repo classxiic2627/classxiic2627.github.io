@@ -634,8 +634,8 @@ async function handle(request, env) {
     if (!allowedPushHost || endpointUrl.username || endpointUrl.password || endpointUrl.port) fail("Push endpoint provider is not supported.");
     const keys = body.keys;
     if (!keys || typeof keys !== "object" || Array.isArray(keys) ||
-        typeof keys.p256dh !== "string" || !/^[A-Za-z0-9_-]{80,100}$/.test(keys.p256dh) ||
-        typeof keys.auth !== "string" || !/^[A-Za-z0-9_-]{20,30}$/.test(keys.auth)) {
+        typeof keys.p256dh !== "string" || !/^[A-Za-z0-9_-]{87}$/.test(keys.p256dh) ||
+        typeof keys.auth !== "string" || !/^[A-Za-z0-9_-]{22}$/.test(keys.auth)) {
       fail("Push subscription keys are invalid.");
     }
     await env.DB.prepare(
