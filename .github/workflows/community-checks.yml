@@ -283,3 +283,16 @@ jobs:
             exit 1
           }
           Write-Host "PowerShell local demo script syntax is valid."
+
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path $PWD 'scripts/smoke-community-staging.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_ }
+            exit 1
+          }
+          Write-Host "PowerShell staging smoke-test script syntax is valid."
