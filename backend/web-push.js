@@ -90,6 +90,7 @@ export async function sendWebPush(subscription,payload,env,fetchImpl=fetch) {
   const [token,body] = await Promise.all([createVapidToken(endpoint.href,env),encryptPayload(subscription,payload)]);
   const response = await fetchImpl(endpoint.href,{
     method:"POST",
+    redirect:"manual",
     headers:{
       Authorization:"vapid t="+token+", k="+env.VAPID_PUBLIC_KEY,
       "Content-Encoding":"aes128gcm",
