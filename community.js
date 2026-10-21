@@ -384,8 +384,41 @@
     status("adminStatus", "Signed out.");
   });
 
-  $("subscribeButton").addEventListener("click", () => {
-    status("pushStatus", "Push notifications are not implemented yet, so this button will not request browser permissions.");
+  function decodeApplicationServerKey(value) {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+    return Uint8Array.from(binary, character => character.charCodeAt(0));
+  }
+  $("subscribeButton").addEventListener("click", async () => {
+    const token = uploadToken();
+    if (!token) {
+      status("pushStatus", "Sign in with your member or administrator account and finish any required password change first.");
+      return;
+    }
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      status("pushStatus", "This browser does not support web push notifications.");
+      return;
+    }
+    try {
+      const keyData = await api("/api/push/public-key");
+      if (!keyData.publicKey) throw new Error("Push notifications are not configured on the server yet.");
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") throw new Error("Notification permission was not granted.");
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) subscription = await registration.pushManager.subscribe({
+        userVisibleOnly:true,
+        applicationServerKey:decodeApplicationServerKey(keyData.publicKey)
+      });
+      await api("/api/push/subscribe", {
+        method:"POST",
+        body:JSON.stringify(subscription.toJSON())
+      }, token);
+      status("pushStatus", "Notifications enabled on this device for class announcements.");
+      $("subscribeButton").textContent = "Notifications enabled";
+    } catch (error) {
+      status("pushStatus", error.message);
+    }
   });
   loadPublicContent();
 })();
