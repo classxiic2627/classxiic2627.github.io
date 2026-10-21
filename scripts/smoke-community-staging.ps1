@@ -109,12 +109,79 @@ try {
     throw "Member could not sign in with the changed password."
   }
 
+  Write-Host "Testing real staging Drive upload, public read, and admin-only delete..."
+  $pngBytes = [Convert]::FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/jAAAAABJRU5ErkJggg==")
+  $uploadKey = [guid]::NewGuid().ToString("N")
+  $httpClient = [System.Net.Http.HttpClient]::new()
+  $httpClient.Timeout = [TimeSpan]::FromSeconds(60)
+  $uploadRequest = $null
+  $uploadResponse = $null
+  $mediaRequest = $null
+  $mediaResponse = $null
+  $deleteRequest = $null
+  $deleteResponse = $null
+  $verifyResponse = $null
+  $multipart = $null
+  try {
+    $multipart = [System.Net.Http.MultipartFormDataContent]::new()
+    $multipart.Add([System.Net.Http.StringContent]::new("image"), "type")
+    $multipart.Add([System.Net.Http.StringContent]::new("Staging smoke test"), "title")
+    $multipart.Add([System.Net.Http.StringContent]::new("Temporary item created by the staging smoke script"), "caption")
+    $mediaContent = [System.Net.Http.ByteArrayContent]::new($pngBytes)
+    $mediaContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("image/png")
+    $multipart.Add($mediaContent, "media", "staging-smoke.png")
+
+    $uploadRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Post, "$BaseUrl/api/content")
+    $uploadRequest.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $memberSession.token)
+    $uploadRequest.Headers.Add("Idempotency-Key", $uploadKey)
+    $uploadRequest.Content = $multipart
+    $uploadResponse = $httpClient.SendAsync($uploadRequest).GetAwaiter().GetResult()
+    if ([int]$uploadResponse.StatusCode -ne 201) {
+      throw "Staging media upload failed (HTTP $([int]$uploadResponse.StatusCode))."
+    }
+    $uploadResult = $uploadResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+    if (-not $uploadResult.id) { throw "Staging media upload response did not include an item ID." }
+
+    $mediaRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, "$BaseUrl/api/media/$($uploadResult.id)")
+    $mediaResponse = $httpClient.SendAsync($mediaRequest).GetAwaiter().GetResult()
+    if ([int]$mediaResponse.StatusCode -ne 200) {
+      throw "Public staging media read failed (HTTP $([int]$mediaResponse.StatusCode))."
+    }
+    $downloadedBytes = $mediaResponse.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+    if (-not [System.Linq.Enumerable]::SequenceEqual([byte[]]$pngBytes, [byte[]]$downloadedBytes)) {
+      throw "Public staging media bytes did not match the uploaded test file."
+    }
+
+    $deleteRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Delete, "$BaseUrl/api/admin/content/$($uploadResult.id)")
+    $deleteRequest.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $adminSession.token)
+    $deleteResponse = $httpClient.SendAsync($deleteRequest).GetAwaiter().GetResult()
+    if ([int]$deleteResponse.StatusCode -ne 200) {
+      throw "Admin-only staging media delete failed (HTTP $([int]$deleteResponse.StatusCode))."
+    }
+    $verifyResponse = $httpClient.GetAsync("$BaseUrl/api/media/$($uploadResult.id)").GetAwaiter().GetResult()
+    if ([int]$verifyResponse.StatusCode -ne 404) {
+      throw "Deleted staging media remained publicly readable (HTTP $([int]$verifyResponse.StatusCode))."
+    }
+    Write-Host "PASS: staging Drive upload, public byte-for-byte read, and admin-only deletion."
+  }
+  finally {
+    foreach ($resource in @($uploadRequest, $uploadResponse, $mediaRequest, $mediaResponse, $deleteRequest, $deleteResponse, $verifyResponse, $multipart)) {
+      if ($null -ne $resource) { $resource.Dispose() }
+    }
+    $httpClient.Dispose()
+    $pngBytes = $null
+    $downloadedBytes = $null
+    $uploadResult = $null
+    $uploadKey = $null
+    $mediaContent = $null
+  }
+
   Write-Host "Checking public content and announcement reads..."
   $content = Invoke-RestMethod -Method GET -Uri "$BaseUrl/api/content" -TimeoutSec 30
   $announcements = Invoke-RestMethod -Method GET -Uri "$BaseUrl/api/announcements" -TimeoutSec 30
-  Write-Host "PASS: health, first-admin setup/login, member provisioning, forced password change, new member login, public reads."
+  Write-Host "PASS: health, first-admin setup/login, member provisioning, role separation, forced password change, session revocation, re-login, real Drive upload/read/delete, public reads."
   Write-Host "Public content count: $(@($content.items).Count); announcement count: $(@($announcements.items).Count)."
-  Write-Host "NOT VERIFIED: real Drive upload/read/delete, Drive/D1 failure cleanup, disabled-session rejection, 50 MiB upload memory use, and push delivery."
+  Write-Host "NOT VERIFIED: Drive/D1 failure cleanup, disabled-session rejection, 50 MiB upload memory use, and push delivery."
   Write-Host "Immediately rotate/remove SETUP_SECRET in staging settings. Never paste tokens, passwords, or secret values into GitHub."
 }
 catch {
