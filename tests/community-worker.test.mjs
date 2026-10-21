@@ -2070,11 +2070,12 @@ test("announcement push fan-out is bounded and reports delivery results", async 
   const client = await webcrypto.subtle.generateKey({name:"ECDH",namedCurve:"P-256"},true,["deriveBits"]);
   const clientRaw = new Uint8Array(await webcrypto.subtle.exportKey("raw",client.publicKey));
   const b64url = value => Buffer.from(value).toString("base64url");
-  const subscriptions = Array.from({length:16},(_,index)=>({
+  const subscriptions = Array.from({length:50},(_,index)=>({
     endpoint:"https://fcm.googleapis.com/fcm/send/test-"+index,
     p256dh:b64url(clientRaw),
     auth:b64url(webcrypto.getRandomValues(new Uint8Array(16)))
   }));
+  let expiredDeleteQueries=0;
   const fanoutEnv = {
     ...env,
     VAPID_PUBLIC_KEY:b64url(publicRaw),
@@ -2085,12 +2086,17 @@ test("announcement push fan-out is bounded and reports delivery results", async 
         return {
           bind() {
             return {
-              first:async()=>adminSession,
-              run:async()=>({success:true,meta:{changes:1}})
+              first:async()=>sql.includes("COUNT(*) AS total FROM push_subscriptions")
+                ? {total:subscriptions.length}
+                : adminSession,
+              run:async()=>{
+                if (sql.includes("DELETE FROM push_subscriptions")) expiredDeleteQueries++;
+                return {success:true,meta:{changes:1}};
+              }
             };
           },
           all:async()=>sql.includes("FROM push_subscriptions")
-            ? {results:subscriptions}
+            ? {results:subscriptions.slice(0,40)}
             : {results:[]}
         };
       }
@@ -2109,6 +2115,9 @@ test("announcement push fan-out is bounded and reports delivery results", async 
     maxActive=Math.max(maxActive,active);
     await new Promise(resolve=>setTimeout(resolve,5));
     active--;
+    const endpoint=new URL(_url).pathname;
+    if (endpoint.endsWith("test-0")) return new Response(null,{status:410});
+    if (endpoint.endsWith("test-1")) return new Response(null,{status:503});
     return new Response(null,{status:201});
   };
   let response;
@@ -2123,10 +2132,13 @@ test("announcement push fan-out is bounded and reports delivery results", async 
   }
   assert.equal(response.status,201);
   const result=await response.json();
-  assert.equal(result.notifications.sent,16);
-  assert.equal(result.notifications.failed,0);
-  assert.equal(result.notifications.expired,0);
-  assert.equal(providerCalls,16);
+  assert.equal(result.notifications.total,50);
+  assert.equal(result.notifications.sent,38);
+  assert.equal(result.notifications.failed,1);
+  assert.equal(result.notifications.expired,1);
+  assert.equal(result.notifications.skipped,10,"the per-announcement cap must report unattempted devices");
+  assert.equal(providerCalls,40,"one announcement may attempt at most 40 provider requests");
+  assert.equal(expiredDeleteQueries,1,"expired subscriptions must be removed in one batched D1 statement");
   assert.equal(maxActive,8,"provider requests must be sent in batches of eight or fewer");
 });
 
