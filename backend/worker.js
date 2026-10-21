@@ -719,24 +719,37 @@ async function handle(request, env) {
     let notifications = {configured:isPushConfigured(env),sent:0,failed:0,expired:0};
     if (notifications.configured) {
       try {
-        const subscriptions = await env.DB.prepare("SELECT ps.endpoint,ps.p256dh,ps.auth FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.disabled=0").all();
-        const outcomes = await Promise.allSettled((subscriptions.results || []).map(async subscription => {
-          const result = await sendWebPush(subscription, {
-            title:title.slice(0,120),
-            body:announcement.slice(0,180),
-            url:"/community.html",
-            tag:"announcement-" + announcementId
-          }, env);
-          if (result.status === 404 || result.status === 410) {
-            await env.DB.prepare("DELETE FROM push_subscriptions WHERE endpoint=?").bind(subscription.endpoint).run();
-            return "expired";
-          }
-          if (result.status < 200 || result.status >= 300) throw new Error("Push provider returned HTTP " + result.status);
-          return "sent";
-        }));
+        const subscriptions = (await env.DB.prepare("SELECT ps.endpoint,ps.p256dh,ps.auth FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.disabled=0").all()).results || [];
+        const outcomes = [];
+        const expiredEndpoints = [];
+        // Keep concurrent provider requests bounded so a large class does not
+        // fan out an unbounded burst from one announcement request.
+        const concurrency = 8;
+        for (let offset = 0; offset < subscriptions.length; offset += concurrency) {
+          const batch = subscriptions.slice(offset, offset + concurrency);
+          const batchOutcomes = await Promise.allSettled(batch.map(async subscription => {
+            const result = await sendWebPush(subscription, {
+              title:title.slice(0,120),
+              body:announcement.slice(0,180),
+              url:"/community.html",
+              tag:"announcement-" + announcementId
+            }, env);
+            if (result.status === 404 || result.status === 410) {
+              expiredEndpoints.push(subscription.endpoint);
+              return "expired";
+            }
+            if (result.status < 200 || result.status >= 300) throw new Error("Push provider returned HTTP " + result.status);
+            return "sent";
+          }));
+          outcomes.push(...batchOutcomes);
+        }
         notifications.sent = outcomes.filter(result => result.status === "fulfilled" && result.value === "sent").length;
         notifications.failed = outcomes.filter(result => result.status === "rejected").length;
-        notifications.expired = outcomes.filter(result => result.status === "fulfilled" && result.value === "expired").length;
+        if (expiredEndpoints.length) {
+          const placeholders = expiredEndpoints.map(() => "?").join(",");
+          await env.DB.prepare("DELETE FROM push_subscriptions WHERE endpoint IN (" + placeholders + ")").bind(...expiredEndpoints).run();
+          notifications.expired = expiredEndpoints.length;
+        }
       } catch {
         // The announcement is already committed; a notification outage must not
         // make the admin think publication failed and encourage duplicate posts.
