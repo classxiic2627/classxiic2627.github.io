@@ -76,6 +76,16 @@ async function encryptPayload(subscription, payload) {
 export async function sendWebPush(subscription,payload,env,fetchImpl=fetch) {
   const endpoint = new URL(subscription.endpoint);
   if (endpoint.protocol !== "https:") throw new Error("Push endpoint must use HTTPS.");
+  const host = endpoint.hostname;
+  const allowedHost = host === "fcm.googleapis.com" ||
+    host === "updates.push.services.mozilla.com" ||
+    host.endsWith(".push.services.mozilla.com") ||
+    host === "web.push.apple.com" ||
+    host.endsWith(".push.apple.com") ||
+    host.endsWith(".notify.windows.com");
+  if (!allowedHost || endpoint.username || endpoint.password || endpoint.port) {
+    throw new Error("Push endpoint provider is not supported.");
+  }
   requireVapid(env);
   const [token,body] = await Promise.all([createVapidToken(endpoint.href,env),encryptPayload(subscription,payload)]);
   const response = await fetchImpl(endpoint.href,{
