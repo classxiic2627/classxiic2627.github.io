@@ -374,7 +374,7 @@
       const delivery = published.notifications;
       let message = "Announcement published.";
       if (!delivery || !delivery.configured) message += " Push delivery is not configured on the server.";
-      else if (!delivery.total && delivery.failed) message += " The announcement is published, but push subscription lookup failed.";
+      else if (delivery.lookupFailed) message += " The announcement is published, but subscription lookup failed; no delivery attempts were made.";
       else if (!delivery.total) message += " No registered push subscriptions yet.";
       else {
         message += " Provider accepted: " + delivery.sent + "; expired endpoints: " + (delivery.expired || 0) + "; failed attempts: " + delivery.failed + ".";
