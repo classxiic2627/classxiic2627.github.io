@@ -2,7 +2,7 @@
 
 **Status: implementation added to the feature branch; CI and staging verification remain required. This is not launch approval.**
 
-The feature branch now reserves each upload in D1 using a user-scoped hash of the client retry key and a fingerprint of the normalized form plus SHA-256 of the file bytes. The stable content UUID is written to Drive `appProperties`; ambiguous retries search only the configured folder and fail closed when no unique matching file is found. The UI retains the key after failure and clears it after success. A deterministic lost-final-response regression test has been added; this branch must still pass CI and the real isolated-staging fault injection before the gate can close.
+The feature branch reserves each upload in D1 using a user-scoped hash of the client retry key and a fingerprint of the normalized form plus SHA-256 of the actual binary file bytes. The stable content UUID is written to Drive `appProperties`; ambiguous retries search only the configured folder and fail closed when no unique matching file is found. The UI retains the key after failure and clears it after success. The byte-hash buffer is scoped to a helper so it is not retained throughout the Drive upload, but hashing still materializes the full file in memory; near-50 MiB peak memory must be verified in isolated staging. Exact-head run [39576803930](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39576803930) passed 82/82 tests on code commit `5728b76a3b75d63b474bb2c597ccc33868b9f19b`; a subsequent schema-state change and this documentation refresh are awaiting their own exact-head CI confirmation. Real isolated-staging fault injection remains required.
 
 ## Required design
 
