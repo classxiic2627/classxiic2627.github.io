@@ -4,7 +4,7 @@ import worker from "../backend/worker.js";
 
 const origin = "https://classxiic2627.github.io";
 
-test("D1 insert and Drive cleanup failure emit a sanitized orphan-reconciliation signal", async () => {
+async function runScenario(driveDeleteStatus) {
   let contentId = null;
   const logs = [];
   const env = {
@@ -75,9 +75,10 @@ test("D1 insert and Drive cleanup failure emit a sanitized orphan-reconciliation
 
       if (target === "https://www.googleapis.com/drive/v3/files/drive-orphan-test-123") {
         assert.equal(options.method, "DELETE");
+        if (driveDeleteStatus === 204) return new Response(null, { status: 204 });
         return new Response(JSON.stringify({
           error: "sensitive provider detail fake-refresh-token"
-        }), { status: 503, headers: { "Content-Type": "application/json" } });
+        }), { status: driveDeleteStatus, headers: { "Content-Type": "application/json" } });
       }
 
       throw new Error("Unexpected provider request: " + target);
@@ -112,11 +113,23 @@ test("D1 insert and Drive cleanup failure emit a sanitized orphan-reconciliation
   assert.equal(await response.text(), JSON.stringify({ error: "Internal server error." }));
   assert.ok(contentId, "the attempted D1 content ID should be captured");
   const signal = logs.find(args => args[0] === "Community media orphan cleanup required");
-  assert.ok(signal, "cleanup failure should emit a reconciliation signal");
-  assert.deepEqual(signal[1], {
-    event: "drive_orphan_cleanup_failed",
-    itemId: contentId,
-    driveFileId: "drive-orphan-test-123"
-  });
-  assert.doesNotMatch(JSON.stringify(signal), /sensitive provider detail|fake-refresh-token|fake-client-secret|fake-test-access-token/);
+  if (driveDeleteStatus === 204) {
+    assert.equal(signal, undefined, "successful compensating cleanup should not emit an orphan signal");
+  } else {
+    assert.ok(signal, "cleanup failure should emit a reconciliation signal");
+    assert.deepEqual(signal[1], {
+      event: "drive_orphan_cleanup_failed",
+      itemId: contentId,
+      driveFileId: "drive-orphan-test-123"
+    });
+    assert.doesNotMatch(JSON.stringify(signal), /sensitive provider detail|fake-refresh-token|fake-client-secret|fake-test-access-token/);
+  }
+}
+
+test("D1 insert and Drive cleanup failure emit a sanitized orphan-reconciliation signal", async () => {
+  await runScenario(503);
+});
+
+test("D1 insert failure with successful Drive cleanup emits no orphan signal", async () => {
+  await runScenario(204);
 });
