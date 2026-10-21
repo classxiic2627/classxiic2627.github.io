@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker from "../backend/worker.js";
+import { fingerprintFile } from "../backend/upload-fingerprint.js";
 
 const origin = "https://classxiic2627.github.io";
 const retryKey = "upload-retry-key-123456";
@@ -30,6 +31,42 @@ function oauthResponse() {
     status:200, headers:{"Content-Type":"application/json"}
   });
 }
+
+test("upload fingerprint hashes bounded chunks without allocating the whole file", async () => {
+  const size = 2 * 1024 * 1024 + 7;
+  const changedAt = 1024 * 1024 + 3;
+  let maxChunk = 0;
+  let chunkReads = 0;
+  function fakeFile(changeByte = false) {
+    return {
+      size,
+      // Deliberately no root arrayBuffer(): the fingerprint must only read slices.
+      slice(start, end) {
+        const length = end - start;
+        maxChunk = Math.max(maxChunk, length);
+        chunkReads++;
+        return {
+          async arrayBuffer() {
+            const bytes = new Uint8Array(length);
+            for (let i = 0; i < length; i++) {
+              const absolute = start + i;
+              bytes[i] = absolute % 251;
+              if (changeByte && absolute === changedAt) bytes[i] ^= 0x80;
+            }
+            return bytes.buffer;
+          }
+        };
+      }
+    };
+  }
+  const first = await fingerprintFile(fakeFile());
+  const sameBytes = await fingerprintFile(fakeFile());
+  const differentBytes = await fingerprintFile(fakeFile(true));
+  assert.equal(first, sameBytes, "identical bytes produce a stable fingerprint");
+  assert.notEqual(first, differentBytes, "a changed byte changes the fingerprint");
+  assert.ok(maxChunk <= 1024 * 1024, "each temporary buffer is capped at 1 MiB");
+  assert.equal(chunkReads, 9, "three 1 MiB-or-smaller chunks per file are read");
+});
 
 test("retry reconciles a Drive commit whose final response was lost without uploading twice", async () => {
   const reservation = {user_id:7,payload_hash:"",item_id:"",state:"",drive_file_id:null};
