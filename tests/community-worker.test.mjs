@@ -2113,22 +2113,11 @@ test("announcement push fan-out is bounded and reports delivery results", async 
   };
   let response;
   try {
-    response=await worker.fetch(request("/api/admin/announcements",{
+    response=await worker.fetch(new Request("https://api.example.test/api/admin/announcements",{
       method:"POST",
-      headers:{
-        Origin:origin,
-        Authorization:"Bearer "+"m".repeat(64),
-        "Content-Type":"application/json"
-      },
+      headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+      body:JSON.stringify({title:"Class update",body:"New announcement"})
     }),fanoutEnv);
-    // request() has no body parameter; build the POST request with the required payload.
-    if(response.status===400) {
-      response=await worker.fetch(new Request("https://api.example.test/api/admin/announcements",{
-        method:"POST",
-        headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
-        body:JSON.stringify({title:"Class update",body:"New announcement"})
-      }),fanoutEnv);
-    }
   } finally {
     globalThis.fetch=originalFetch;
   }
