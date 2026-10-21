@@ -122,6 +122,7 @@ try {
   $deleteResponse = $null
   $verifyResponse = $null
   $multipart = $null
+  $cleanupComplete = $false
   try {
     $multipart = [System.Net.Http.MultipartFormDataContent]::new()
     $multipart.Add([System.Net.Http.StringContent]::new("image"), "type")
@@ -206,9 +207,29 @@ try {
     if ([int]$verifyResponse.StatusCode -ne 404) {
       throw "Deleted staging media remained publicly readable (HTTP $([int]$verifyResponse.StatusCode))."
     }
+    $cleanupComplete = $true
     Write-Host "PASS: staging Drive upload, public byte-for-byte read, and admin-only deletion."
   }
   finally {
+    if (-not $cleanupComplete -and $uploadResult -and $uploadResult.id -and $adminSession -and $adminSession.token) {
+      $cleanupRequest = $null
+      $cleanupResponse = $null
+      try {
+        $cleanupRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Delete, "$BaseUrl/api/admin/content/$($uploadResult.id)")
+        $cleanupRequest.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $adminSession.token)
+        $cleanupResponse = $httpClient.SendAsync($cleanupRequest).GetAwaiter().GetResult()
+        if ([int]$cleanupResponse.StatusCode -ne 200 -and [int]$cleanupResponse.StatusCode -ne 404) {
+          Write-Warning "Automatic cleanup of the temporary staging smoke item failed (HTTP $([int]$cleanupResponse.StatusCode)); remove it through the staging admin UI."
+        }
+      }
+      catch {
+        Write-Warning "Automatic cleanup of the temporary staging smoke item failed; inspect the staging admin UI for any item created by this test."
+      }
+      finally {
+        if ($cleanupRequest) { $cleanupRequest.Dispose() }
+        if ($cleanupResponse) { $cleanupResponse.Dispose() }
+      }
+    }
     foreach ($resource in @($uploadRequest, $uploadResponse, $mediaRequest, $mediaResponse, $deleteRequest, $deleteResponse, $verifyResponse, $multipart)) {
       if ($null -ne $resource) { $resource.Dispose() }
     }
