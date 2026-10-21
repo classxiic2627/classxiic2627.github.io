@@ -798,6 +798,12 @@ if (request.method === "GET" && path === "/api/push/public-key") {
       endpointUrl.hostname.endsWith(".notify.windows.com")
     );
     if (!allowedPushHost || endpointUrl.username || endpointUrl.password || endpointUrl.port) fail("Push endpoint provider is not supported.");
+    const keys = body.keys;
+    if (!keys || typeof keys !== "object" || Array.isArray(keys) ||
+        typeof keys.p256dh !== "string" || !/^[A-Za-z0-9_-]{87}$/.test(keys.p256dh) ||
+        typeof keys.auth !== "string" || !/^[A-Za-z0-9_-]{22}$/.test(keys.auth)) {
+      fail("Push subscription keys are invalid.");
+    }
     const existingEndpoint = await env.DB.prepare("SELECT user_id FROM push_subscriptions WHERE endpoint=?").bind(endpoint).first();
     if (existingEndpoint?.user_id != null && Number(existingEndpoint.user_id) !== user.id) {
       fail("This browser subscription is already linked to another account. Sign in to that account and disable notifications before linking it here.", 409);
@@ -806,12 +812,6 @@ if (request.method === "GET" && path === "/api/push/public-key") {
     if (!ownsEndpoint) {
       const countRow = await env.DB.prepare("SELECT COUNT(*) AS count FROM push_subscriptions WHERE user_id=?").bind(user.id).first();
       if (Number(countRow?.count || 0) >= 10) fail("An account can register up to 10 notification devices.", 429);
-    }
-    const keys = body.keys;
-    if (!keys || typeof keys !== "object" || Array.isArray(keys) ||
-        typeof keys.p256dh !== "string" || !/^[A-Za-z0-9_-]{87}$/.test(keys.p256dh) ||
-        typeof keys.auth !== "string" || !/^[A-Za-z0-9_-]{22}$/.test(keys.auth)) {
-      fail("Push subscription keys are invalid.");
     }
     const subscriptionWrite = await env.DB.prepare(
       "INSERT INTO push_subscriptions(id,user_id,endpoint,p256dh,auth) SELECT ?,?,?,?,? " +
