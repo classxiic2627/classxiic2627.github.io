@@ -716,7 +716,7 @@ async function handle(request, env) {
     const announcement = cleanText(body.body, 3000, "Announcement", true);
     const announcementId = id();
     await env.DB.prepare("INSERT INTO announcements(id,user_id,title,body) VALUES(?,?,?,?)").bind(announcementId,user.id,title,announcement).run();
-    let notifications = {configured:isPushConfigured(env),sent:0,failed:0,expired:0,skipped:0,total:0,cleanupFailed:0};
+    let notifications = {configured:isPushConfigured(env),sent:0,failed:0,expired:0,skipped:0,total:0,cleanupFailed:0,lookupFailed:false};
     if (notifications.configured) {
       try {
         const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.disabled=0").first();
@@ -766,9 +766,10 @@ async function handle(request, env) {
           }
         }
       } catch {
-        // The announcement is already committed; a notification outage must not
-        // make the admin think publication failed and encourage duplicate posts.
-        notifications.failed += 1;
+        // This outer catch covers subscription count/list lookup, not provider
+        // attempts (each provider outcome is isolated by Promise.allSettled).
+        // Keep lookup failure distinct so the UI never labels it a failed send.
+        notifications.lookupFailed = true;
       }
     }
     return json({ok:true,id:announcementId,notifications}, 201, env.ALLOWED_ORIGIN);
