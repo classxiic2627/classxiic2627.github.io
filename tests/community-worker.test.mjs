@@ -1651,21 +1651,21 @@ test("rejects oversized numeric Content-Length before reading the request body",
   assert.deepEqual(await response.json(), { error: "Request body is too large." });
 });
 
-test("keeps the 15 MiB upload cap aligned across Worker, browser, UI, and docs", () => {
+test("keeps the 50 MiB upload cap aligned across Worker, browser, UI, and docs", () => {
   const workerSource = readFileSync(new URL("../backend/worker.js", import.meta.url), "utf8");
   const clientSource = readFileSync(new URL("../community.js", import.meta.url), "utf8");
   const htmlSource = readFileSync(new URL("../community.html", import.meta.url), "utf8");
   const readmeSource = readFileSync(new URL("../backend/README.md", import.meta.url), "utf8");
-  assert.match(workerSource, /const MAX_MEDIA_BYTES = 15 \* 1024 \* 1024;/);
+  assert.match(workerSource, /const MAX_MEDIA_BYTES = 50 \* 1024 \* 1024;/);
   assert.match(workerSource, /const MAX_UPLOAD_REQUEST_BYTES = MAX_MEDIA_BYTES \+ 1024 \* 1024;/);
-  assert.match(workerSource, /Upload request exceeds the 15 MiB media limit/);
+  assert.match(workerSource, /Upload request exceeds the 50 MiB media limit/);
   assert.match(clientSource, /file\.size > 15 \* 1024 \* 1024/);
-  assert.match(clientSource, /Media must be 15 MiB or smaller/);
-  assert.match(htmlSource, /Maximum file size: 15 MiB/);
+  assert.match(clientSource, /Media must be 50 MiB or smaller/);
+  assert.match(htmlSource, /Maximum file size: 50 MiB/);
   assert.match(htmlSource, /Only the class archive administrator can remove a post/i);
   assert.match(htmlSource, /uploaders cannot delete their own uploads/i);
   assert.doesNotMatch(htmlSource, /classmates' consent|permission from people shown/i);
-  assert.ok(readmeSource.includes("16 MiB (15 MiB media"));
+  assert.ok(readmeSource.includes("51 MiB (50 MiB media"));
   assert.match(readmeSource, /no prior-consent requirement/i);
   assert.match(readmeSource, /uploaders cannot delete their own posts/i);
   assert.doesNotMatch(readmeSource, /Before launch, establish a class-photo consent and removal policy/i);
@@ -1686,20 +1686,20 @@ test("binds upload retry keys to payload fingerprints and rotates after a 409 co
 });
 
 
-test("rejects multipart uploads over the 15 MiB limit from declared length before parsing", async () => {
+test("rejects multipart uploads over the 50 MiB limit from declared length before parsing", async () => {
   const req = new Request("https://api.example.test/api/content", {
     method: "POST",
     headers: {
       Origin: origin,
       Authorization: "Bearer " + "q".repeat(64),
       "Content-Type": "multipart/form-data; boundary=community-test",
-      "Content-Length": String(16 * 1024 * 1024 + 1)
+      "Content-Length": String(51 * 1024 * 1024 + 1)
     },
     body: "not parsed because the declared request size exceeds the cap"
   });
   const response = await worker.fetch(req, authenticatedEnv(memberSession));
   assert.equal(response.status, 413);
-  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 15 MiB media limit." });
+  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 50 MiB media limit." });
 });
 
 test("rejects oversized streamed multipart bodies when Content-Length is absent", async () => {
@@ -1728,7 +1728,7 @@ test("rejects oversized streamed multipart bodies when Content-Length is absent"
   assert.equal(req.headers.get("content-length"), null);
   const response = await worker.fetch(req, authenticatedEnv(memberSession));
   assert.equal(response.status, 413);
-  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 15 MiB media limit." });
+  assert.deepEqual(await response.json(), { error: "Upload request exceeds the 50 MiB media limit." });
 });
 
 test("rejects malformed multipart upload bodies as client errors", async () => {
