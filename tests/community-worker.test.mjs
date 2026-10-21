@@ -2055,3 +2055,26 @@ test("admin with a temporary password cannot access account management before ch
     error: "Change your temporary password before continuing."
   });
 });
+
+test("push public key is unavailable until server-side VAPID is configured", async () => {
+  const response = await worker.fetch(request("/api/push/public-key", {
+    headers:{Origin:origin}
+  }), env);
+  assert.equal(response.status,200);
+  assert.deepEqual(await response.json(),{publicKey:null});
+});
+
+test("push subscription registration requires authentication and server configuration", async () => {
+  const unauthenticated = await worker.fetch(request("/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,"Content-Type":"application/json"}
+  }), env);
+  assert.equal(unauthenticated.status,401);
+
+  const unconfigured = await worker.fetch(request("/api/push/subscribe", {
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"}
+  }), authenticatedEnv(memberSession));
+  assert.equal(unconfigured.status,503);
+  assert.deepEqual(await unconfigured.json(),{error:"Push notifications are not configured on the server yet."});
+});
