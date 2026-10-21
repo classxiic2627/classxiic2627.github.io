@@ -1,5 +1,12 @@
 # Deployment and D1 Migration Readiness
 
+## Additional work in progress — browser push
+
+As of 2026-10-21, browser push is being implemented separately in [draft PR #7](https://github.com/classxiic2627/classxiic2627.github.io/pull/7), stacked on `feature/community-security-foundation`. Exact push-branch head `52f2e27b3b9dfa340d0a2475abecbbe86b50a859` passed Actions run [39572882343](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39572882343): both jobs green, 87/87 tests. This evidence covers mocked Web Push signing/encryption, API auth/configuration behavior, and the existing local D1 smoke—not real push-provider delivery.
+
+This does **not** change the release gate: PR #7 is draft/unmerged; no VAPID keys are configured, no real browser/provider delivery has been tested, and the published frontend remains disconnected from a deployed Worker. Do not mark the system production-ready from CI alone. Continue to require approved no-cost staging, owner-managed credentials, real Drive and push verification, D1 inventory/backup/restore, near-limit upload-memory checks, and separate explicit production approval.
+
+
 **Status: BLOCKED — review only; not deployment approval.**  
 **Latest code checkpoint (2026-10-21):** `c69e832c72353bcfd62c2c80236dc0ee9df0c8ed`; exact-head [Actions run 39571908665](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39571908665) passed both jobs with **81/81 Worker tests**. Added two fault-injection regressions for Drive upload success → D1 metadata insert failure, covering both successful compensating deletion and failed cleanup. The Worker emits a structured `drive_orphan_cleanup_failed` signal with the item ID and Drive file ID only when cleanup fails, omitting raw provider error strings. This verifies mocked failure paths only; it does not discover files in real Drive, prove retry idempotency, or replace live staging verification.
 
