@@ -547,6 +547,8 @@ async function handle(request, env) {
           ).bind(user.id, keyHash).first();
         }
       }
+      if (existing?.state === "completed") return json({ok:true,id:itemId}, 200, env.ALLOWED_ORIGIN);
+      if (existing?.state === "retryable") fail("Upload is already being retried. Please retry shortly.", 503);
       if (existing && existing.state !== "retryable") {
         // The previous attempt may have committed in Drive but lost its reply.
         // Reconcile by stable Drive appProperties; never upload again merely
