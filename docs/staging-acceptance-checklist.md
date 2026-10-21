@@ -30,6 +30,7 @@ This checklist is for the first isolated, no-cost staging run of the existing Co
 - Automated fault-injection coverage now exercises Drive upload success followed by D1 insert failure and Drive cleanup failure; it verifies the request fails safely and the cleanup signal identifies the item and Drive file without logging raw provider error text. This is mocked CI evidence, not a live Drive reconciliation test.
 - [ ] Document and exercise a safe orphan-reconciliation procedure scoped only to the dedicated test folder. Compare Drive file IDs with staging D1 metadata; never delete files outside the test folder or based on guesses.
 - [ ] Test interrupted resumable uploads, retry behavior, duplicate submissions, and cleanup after partial failure. Confirm retries do not silently publish duplicate media.
+- [ ] Specifically test the case where Drive commits an upload but the Worker loses the final response before receiving its file ID. Current retries are not proven idempotent for this window; keep launch blocked until a stable idempotency/reservation design is tested or the owner explicitly accepts the documented risk.
 - [ ] Test Drive read/delete failures and verify metadata remains in a state that supports safe retry.
 - [ ] Record request/response evidence and relevant sanitized logs for each injected failure.
 
