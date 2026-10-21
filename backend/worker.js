@@ -528,8 +528,15 @@ async function handle(request, env) {
         .bind(itemId, user.id, type, title, caption, driveFileId, mime, file.size).run();
     } catch (error) {
       try { await mediaStore.delete(driveFileId); }
-      catch (cleanupError) {
-        console.error("Failed to clean up unreferenced Google Drive file", {itemId, error:String(cleanupError)});
+      catch {
+        // Keep this signal structured and sanitized: provider error strings can
+        // contain request details. The Drive ID is required for manual
+        // reconciliation against the dedicated test folder and D1 metadata.
+        console.error("Community media orphan cleanup required", {
+          event: "drive_orphan_cleanup_failed",
+          itemId,
+          driveFileId
+        });
       }
       throw error;
     }
