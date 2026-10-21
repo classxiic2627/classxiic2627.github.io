@@ -44,7 +44,7 @@ This checklist is for the first isolated, no-cost staging run of the existing Co
 
 ## Upload memory and boundaries
 
-- [ ] Exercise the real deployed request path with a near-50 MiB valid file and observe Worker memory/errors; the multipart parser still materializes the file, so the byte-count guard alone is not proof of memory safety.
+- [ ] Exercise the real deployed request path with a near-50 MiB valid file and observe Worker memory/errors. The multipart parser materializes the `File`, and the current upload route additionally calls `file.arrayBuffer()` to hash the entire file before streaming it to Drive; this can allocate another ~50 MiB buffer on top of parser/request overhead under the Worker's 128 MB memory ceiling. Remove the extra full-file copy with bounded incremental hashing, or demonstrate safe peak memory in isolated staging before accepting the current approach. The byte-count guard alone is not proof of memory safety.
 - [ ] Verify a file above 50 MiB and a multipart request above 51 MiB are rejected, including a request without a trustworthy Content-Length.
 - [ ] Record the deployed plan/limits and test outcome. If memory pressure or limits are unclear, stop and ask the owner before changing the approved upload cap.
 
