@@ -57,6 +57,15 @@ test("Web Push sends encrypted payload with VAPID authorization", async () => {
   assert.equal(request.url,pair.subscription.endpoint);
   assert.equal(request.init.method,"POST");
   assert.match(request.init.headers.Authorization,/^vapid t=[A-Za-z0-9_.-]+, k=/);
+  const vapidToken = request.init.headers.Authorization.slice("vapid t=".length).split(", k=")[0];
+  const [jwtHeader,jwtClaims,jwtSignature] = vapidToken.split(".");
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(fromB64url(jwtHeader))),{typ:"JWT",alg:"ES256"});
+  const vapidPublicKey = await webcrypto.subtle.importKey("raw",fromB64url(pair.env.VAPID_PUBLIC_KEY),{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
+  assert.equal(await webcrypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},vapidPublicKey,fromB64url(jwtSignature),encoder.encode(jwtHeader+"."+jwtClaims)),true);
+  const claims = JSON.parse(new TextDecoder().decode(fromB64url(jwtClaims)));
+  assert.equal(claims.aud,new URL(pair.subscription.endpoint).origin);
+  assert.equal(claims.sub,pair.env.VAPID_SUBJECT);
+  assert.ok(claims.exp > Math.floor(Date.now()/1000));
   assert.equal(request.init.headers["Content-Encoding"],"aes128gcm");
   assert.equal(request.init.headers["Content-Type"],"application/octet-stream");
   assert.ok(request.init.body instanceof Uint8Array);
