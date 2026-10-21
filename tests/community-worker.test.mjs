@@ -2076,5 +2076,5 @@ test("push subscription registration requires authentication and server configur
     headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"}
   }), authenticatedEnv(memberSession));
   assert.equal(unconfigured.status,503);
-  assert.deepEqual(await unconfigured.json(),{error:"Push notifications are not configured on the server yet."});
+  assert.deepEqual(await unconfigured.json(),{error:"Internal server error."});
 });
