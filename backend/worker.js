@@ -814,12 +814,20 @@ if (request.method === "GET" && path === "/api/push/public-key") {
       fail("Push subscription keys are invalid.");
     }
     const subscriptionWrite = await env.DB.prepare(
-      "INSERT INTO push_subscriptions(id,user_id,endpoint,p256dh,auth) VALUES(?,?,?,?,?) " +
+      "INSERT INTO push_subscriptions(id,user_id,endpoint,p256dh,auth) SELECT ?,?,?,?,? " +
+      "WHERE (SELECT COUNT(*) FROM push_subscriptions WHERE user_id=?) < 10 " +
+      "OR EXISTS (SELECT 1 FROM push_subscriptions WHERE endpoint=? AND user_id=?) " +
       "ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth " +
       "WHERE push_subscriptions.user_id=excluded.user_id"
-    ).bind(id(),user.id,endpoint,keys.p256dh,keys.auth).run();
-    if (subscriptionWrite.meta?.changes === 0) {
-      fail("This browser subscription is already linked to another account. Sign in to that account and disable notifications before linking it here.", 409);
+    ).bind(id(),user.id,endpoint,keys.p256dh,keys.auth,user.id,endpoint,user.id).run();
+    if (Number(subscriptionWrite.meta?.changes || 0) === 0) {
+      const currentOwner = await env.DB.prepare("SELECT user_id FROM push_subscriptions WHERE endpoint=?").bind(endpoint).first();
+      if (currentOwner?.user_id != null && Number(currentOwner.user_id) !== user.id) {
+        fail("This browser subscription is already linked to another account. Sign in to that account and disable notifications before linking it here.", 409);
+      }
+      const currentCount = await env.DB.prepare("SELECT COUNT(*) AS count FROM push_subscriptions WHERE user_id=?").bind(user.id).first();
+      if (Number(currentCount?.count || 0) >= 10) fail("An account can register up to 10 notification devices.", 429);
+      fail("This browser subscription could not be registered. Retry shortly.", 409);
     }
     return json({ok:true}, 201, env.ALLOWED_ORIGIN);
   }
