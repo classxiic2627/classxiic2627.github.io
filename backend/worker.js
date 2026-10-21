@@ -580,7 +580,7 @@ async function handle(request, env) {
     let notifications = {configured:isPushConfigured(env),sent:0,failed:0};
     if (notifications.configured) {
       try {
-        const subscriptions = await env.DB.prepare("SELECT endpoint,p256dh,auth FROM push_subscriptions").all();
+        const subscriptions = await env.DB.prepare("SELECT ps.endpoint,ps.p256dh,ps.auth FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.disabled=0").all();
         const outcomes = await Promise.allSettled((subscriptions.results || []).map(async subscription => {
           const result = await sendWebPush(subscription, {
             title:title.slice(0,120),
