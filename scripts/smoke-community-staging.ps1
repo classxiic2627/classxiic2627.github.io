@@ -156,6 +156,9 @@ try {
   $uploadResponse = $null
   $mediaRequest = $null
   $mediaResponse = $null
+  $memberDeleteRequest = $null
+  $memberDeleteResponse = $null
+  $memberDeleteVerifyResponse = $null
   $deleteRequest = $null
   $deleteResponse = $null
   $verifyResponse = $null
@@ -235,6 +238,18 @@ try {
       throw "Public staging media bytes did not match the uploaded test file."
     }
 
+    Write-Host "Checking that a member cannot delete a published post..."
+    $memberDeleteRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Delete, "$BaseUrl/api/admin/content/$($uploadResult.id)")
+    $memberDeleteRequest.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $memberSession.token)
+    $memberDeleteResponse = $httpClient.SendAsync($memberDeleteRequest).GetAwaiter().GetResult()
+    if ([int]$memberDeleteResponse.StatusCode -ne 403) {
+      throw "Member session was not denied admin-only media deletion (HTTP $([int]$memberDeleteResponse.StatusCode))."
+    }
+    $memberDeleteVerifyResponse = $httpClient.GetAsync("$BaseUrl/api/media/$($uploadResult.id)").GetAwaiter().GetResult()
+    if ([int]$memberDeleteVerifyResponse.StatusCode -ne 200) {
+      throw "The media item was not readable after the member's denied delete attempt (HTTP $([int]$memberDeleteVerifyResponse.StatusCode))."
+    }
+
     $deleteRequest = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Delete, "$BaseUrl/api/admin/content/$($uploadResult.id)")
     $deleteRequest.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $adminSession.token)
     $deleteResponse = $httpClient.SendAsync($deleteRequest).GetAwaiter().GetResult()
@@ -246,7 +261,7 @@ try {
       throw "Deleted staging media remained publicly readable (HTTP $([int]$verifyResponse.StatusCode))."
     }
     $cleanupComplete = $true
-    Write-Host "PASS: staging Drive upload, public byte-for-byte read, and admin-only deletion."
+    Write-Host "PASS: staging Drive upload, public byte-for-byte read, member-denied delete, and admin-only deletion."
   }
   finally {
     if (-not $cleanupComplete -and $uploadResult -and $uploadResult.id -and $adminSession -and $adminSession.token) {
@@ -268,7 +283,7 @@ try {
         if ($cleanupResponse) { $cleanupResponse.Dispose() }
       }
     }
-    foreach ($resource in @($uploadRequest, $uploadResponse, $mediaRequest, $mediaResponse, $deleteRequest, $deleteResponse, $verifyResponse, $multipart)) {
+    foreach ($resource in @($uploadRequest, $uploadResponse, $mediaRequest, $mediaResponse, $memberDeleteRequest, $memberDeleteResponse, $memberDeleteVerifyResponse, $deleteRequest, $deleteResponse, $verifyResponse, $multipart)) {
       if ($null -ne $resource) { $resource.Dispose() }
     }
     $httpClient.Dispose()
