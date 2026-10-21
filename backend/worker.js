@@ -639,10 +639,14 @@ async function handle(request, env) {
         typeof keys.auth !== "string" || !/^[A-Za-z0-9_-]{22}$/.test(keys.auth)) {
       fail("Push subscription keys are invalid.");
     }
-    await env.DB.prepare(
+    const subscriptionWrite = await env.DB.prepare(
       "INSERT INTO push_subscriptions(id,user_id,endpoint,p256dh,auth) VALUES(?,?,?,?,?) " +
-      "ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,p256dh=excluded.p256dh,auth=excluded.auth"
+      "ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth=excluded.auth " +
+      "WHERE push_subscriptions.user_id=excluded.user_id"
     ).bind(id(),user.id,endpoint,keys.p256dh,keys.auth).run();
+    if (subscriptionWrite.meta?.changes === 0) {
+      fail("This browser subscription is already linked to another account. Sign in to that account and disable notifications before linking it here.", 409);
+    }
     return json({ok:true}, 201, env.ALLOWED_ORIGIN);
   }
   if (request.method === "DELETE" && path === "/api/push/subscribe") {
