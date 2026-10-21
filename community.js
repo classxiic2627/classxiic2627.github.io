@@ -15,8 +15,9 @@
   let adminToken = "";
   let memberMustChangePassword = false;
   let adminMustChangePassword = false;
-  // Keep one key until a successful response so network retries reuse the same reservation.
-  let pendingUploadKey = "";
+  // Keep retry keys by exact submission fingerprint so a failed upload can be
+  // retried safely even if the user edits the form and later returns to it.
+  const pendingUploadKeys = new Map();
   const uploadToken = () => {
     if (memberToken && !memberMustChangePassword) return memberToken;
     if (adminToken && !adminMustChangePassword) return adminToken;
@@ -32,7 +33,11 @@
     if (options.body && !(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
     const response = await fetch(API_BASE + path, {...options, headers});
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Request failed (" + response.status + ").");
+    if (!response.ok) {
+      const error = new Error(data.error || "Request failed (" + response.status + ").");
+      error.status = response.status;
+      throw error;
+    }
     return data;
   }
   const status = (id, message) => { $(id).textContent = message; };
@@ -145,18 +150,6 @@
       status("memberStatus", "Password changed and all sessions revoked. Please sign in again.");
     } catch (error) { status("memberStatus", error.message); }
   });
-  // A retry key belongs to one exact submission. Keep it after a failed
-  // request for safe retries, but rotate it as soon as the user edits payload
-  // fields so a changed file/form is not rejected with a stale-key 409.
-  for (const [fieldId, eventName] of [
-    ["uploadType", "change"],
-    ["uploadTitle", "input"],
-    ["uploadCaption", "input"],
-    ["uploadMedia", "change"]
-  ]) {
-    $(fieldId).addEventListener(eventName, () => { pendingUploadKey = ""; });
-  }
-
   $("uploadForm").addEventListener("submit", async (event) => {
     event.preventDefault();
     const token = uploadToken();
@@ -166,18 +159,35 @@
     if (!file) { status(targetStatus, "Choose a photo or video first."); return; }
     if (file.size > 50 * 1024 * 1024) { status(targetStatus, "Media must be 50 MiB or smaller."); return; }
     const form = new FormData();
-    form.set("type", $("uploadType").value);
-    form.set("title", $("uploadTitle").value.trim());
-    form.set("caption", $("uploadCaption").value.trim());
+    const type = $("uploadType").value;
+    const title = $("uploadTitle").value.trim();
+    const caption = $("uploadCaption").value.trim();
+    form.set("type", type);
+    form.set("title", title);
+    form.set("caption", caption);
     form.set("media", file);
+    const fingerprint = JSON.stringify({
+      type, title, caption, name:file.name, size:file.size,
+      mime:file.type, lastModified:file.lastModified
+    });
     try {
-      if (!pendingUploadKey) pendingUploadKey = crypto.randomUUID();
+      let pendingUploadKey = pendingUploadKeys.get(fingerprint);
+      if (!pendingUploadKey) {
+        pendingUploadKey = crypto.randomUUID();
+        pendingUploadKeys.set(fingerprint, pendingUploadKey);
+      }
       await api("/api/content", {method:"POST", body:form, headers:{"Idempotency-Key":pendingUploadKey}}, token);
-      pendingUploadKey = "";
-      $("uploadForm").reset();
+      pendingUploadKeys.delete(fingerprint);
       status(targetStatus, "Published. Push notifications are not active yet.");
+      $("uploadForm").reset();
       await loadPublicContent();
-    } catch (error) { status(targetStatus, error.message); }
+    } catch (error) {
+      // A 409 means the same key was bound to a different server-side payload
+      // (for example, same filename/size with different bytes). Let the next
+      // deliberate retry get a fresh key rather than trapping the form.
+      if (error.status === 409) pendingUploadKeys.delete(fingerprint);
+      status(targetStatus, error.message);
+    }
   });
 
   $("adminLogin").addEventListener("submit", async (event) => {
