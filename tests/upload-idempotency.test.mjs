@@ -127,15 +127,23 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   globalThis.fetch = env.__googleFetch;
   let first;
   let second;
+  let third;
+  let changedPayload;
   try {
     first = await worker.fetch(request(form()),env);
     second = await worker.fetch(request(form()),env);
+    third = await worker.fetch(request(form()),env);
+    const changed = form();
+    changed.set("title", "Different title");
+    changedPayload = await worker.fetch(request(changed),env);
   } finally {
     globalThis.fetch = originalFetch;
   }
 
   assert.equal(first.status,503);
   assert.equal(second.status,200);
+  assert.equal(third.status,200, "a completed retry returns the same item without another upload");
+  assert.equal(changedPayload.status,409, "reusing a key for a changed payload is rejected");
   const result = await second.json();
   assert.equal(result.id,reservation.item_id);
   assert.equal(reservation.state,"completed");
