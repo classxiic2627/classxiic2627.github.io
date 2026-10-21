@@ -4,7 +4,7 @@
 
 ## Evidence snapshot — 2026-10-21
 
-- Foundation PR #1 head `f5f011d0c7b8cb15586b449689b0b551136ec56a`: [Actions run 39586853858](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39586853858) passed both jobs and 84/84 Worker tests. Upload idempotency covers concurrent same-key requests and fail-closed recovery for ambiguous Drive results in mocked tests.
+- Foundation PR #1 head `473dab023918bc94ab006fe26b5f4d7ab99cacc0`: [Actions run 39598223344](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39598223344) passed both jobs and 86/86 Worker tests. Upload idempotency covers concurrent same-key requests and fail-closed recovery for ambiguous Drive results in mocked tests. The owner-approved 50 MiB file + 1 MiB multipart cap is restored; payload fingerprinting now processes 1 MiB slices and hashes their digests instead of materializing a full-file ArrayBuffer.
 - Browser push PR #14 head `75059fa36563c30883d79d9b0390d5ceecb7f366`: [Actions run 39595766564](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39595766564) passed both jobs and 98/98 tests. The current head includes redirect blocking, a 40-device announcement cap, eight-way bounded concurrency, five-second provider abort timeout, batched expired-endpoint cleanup, explicit partial-delivery accounting, and an atomic 10-device-per-account subscription cap.
 - These are CI/mock results only. No live Drive fault injection, near-limit upload memory measurement, or real browser/provider push delivery has been verified.
 
@@ -16,13 +16,14 @@
 - [x] **Make outcome semantics explicit.** `sent` means the provider returned a successful HTTP status, not that a device displayed a notification. Partial delivery and skipped recipients are reported to the admin.
 - [x] Exact-head CI passed on `75059fa36563c30883d79d9b0390d5ceecb7f366`: [run 39595766564](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39595766564), both jobs green and 98/98 tests. PR #14 still requires reviewer sign-off and merge-context review before integration.
 
-## Upload cap policy mismatch — owner decision required
+## Upload cap policy — owner decision applied
 
-The latest recorded owner decision specifies **50 MiB per file plus 1 MiB multipart overhead**. However, foundation head `f1070c8c0e770465deef41686b5d583bc5864c8b` currently sets a **15 MiB** file cap across Worker/UI/tests as a conservative memory mitigation. Exact-head CI [39596850600](https://github.com/classxiic2627/classxiic2627.github.io/actions/runs/39596850600) is green for that 15 MiB contract, but passing tests do not authorize changing the owner's product limit.
+The recorded owner decision is **50 MiB per file plus 1 MiB multipart overhead**, and the current foundation code, browser validation, HTML copy, README, error responses, and boundary tests now consistently enforce that limit. The brief 15 MiB experiment was reverted; no owner policy change is pending.
 
-- [ ] Before merge, Commander Krishna must explicitly choose: restore the approved 50 MiB contract and retain a hard near-limit memory gate, or approve 15 MiB as a deliberate product change.
-- [ ] After the decision, align Worker, browser validation, HTML copy, README, error responses, tests, and staging checklist to the same limit. Do not simply weaken boundary assertions.
-- [ ] The current digest still uses `file.arrayBuffer()`; a 15 MiB cap reduces but does not prove peak-memory safety. Verify peak memory in the actual Worker runtime or implement reviewed bounded-memory hashing before claiming that gate is closed.
+The new `backend/upload-fingerprint.js` hashes fixed 1 MiB slices and then hashes a versioned header plus the chunk digests. This is a bounded-chunk fingerprint construction, not the standard SHA-256 digest of the entire file. Current tests cover bounded chunk size, repeatability, and changed-byte sensitivity; review still requests a pinned known vector plus empty-file and malformed-slice tests.
+
+- [ ] **Near-limit memory remains open.** Chunked fingerprinting removes the extra full-file hash buffer, but multipart parsing still materializes the file. Measure peak memory in an actual isolated Worker near the approved 50 MiB limit under the 128 MB isolate ceiling before calling that limit safe.
+- [ ] Do not change the 50 MiB product cap again without explicit owner approval. If staging measurements show it is unsafe, pause and present the measured evidence/options to the owner instead of silently lowering the limit.
 
 ## Upload: remaining acceptance gates
 
