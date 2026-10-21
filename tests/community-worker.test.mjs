@@ -2160,6 +2160,7 @@ test("push subscription cannot be reassigned from another account", async () => 
   const clientBytes = Buffer.alloc(65);
   clientBytes[0] = 4;
   const authBytes = Buffer.alloc(16, 9);
+  let insertAttempted=false;
   const pushEnv = {
     ...authenticatedEnv(memberSession),
     VAPID_PUBLIC_KEY:publicBytes.toString("base64url"),
@@ -2170,10 +2171,17 @@ test("push subscription cannot be reassigned from another account", async () => 
         return {
           bind(...values) {
             return {
-              first:async()=>memberSession,
-              run:async()=>sql.includes("INSERT INTO push_subscriptions")
-                ? {success:true,meta:{changes:0}}
-                : {success:true,meta:{changes:1}}
+              first:async()=>{
+                if (sql.includes("SELECT user_id FROM push_subscriptions")) return {user_id:99};
+                if (sql.includes("SELECT COUNT(*) AS count FROM push_subscriptions")) return {count:0};
+                return memberSession;
+              },
+              run:async()=>{
+                if (sql.includes("INSERT INTO push_subscriptions")) insertAttempted=true;
+                return sql.includes("INSERT INTO push_subscriptions")
+                  ? {success:true,meta:{changes:0}}
+                  : {success:true,meta:{changes:1}};
+              }
             };
           }
         };
@@ -2189,6 +2197,7 @@ test("push subscription cannot be reassigned from another account", async () => 
     })
   }),pushEnv);
   assert.equal(response.status,409);
+  assert.equal(insertAttempted,false,"the ownership guard must reject before attempting an upsert");
   assert.deepEqual(await response.json(),{
     error:"This browser subscription is already linked to another account. Sign in to that account and disable notifications before linking it here."
   });
@@ -2213,7 +2222,11 @@ test("push subscription can be refreshed by its owning account", async () => {
         return {
           bind(...values) {
             return {
-              first:async()=>memberSession,
+              first:async()=>{
+                if (sql.includes("SELECT user_id FROM push_subscriptions")) return {user_id:memberSession.id};
+                if (sql.includes("SELECT COUNT(*) AS count FROM push_subscriptions")) return {count:10};
+                return memberSession;
+              },
               run:async()=>{
                 if (sql.includes("INSERT INTO push_subscriptions")) {
                   insertSql=sql;
