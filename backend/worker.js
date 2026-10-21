@@ -710,11 +710,6 @@ async function handle(request, env) {
     const rows = await env.DB.prepare("SELECT id,title,body,created_at AS createdAt FROM announcements ORDER BY created_at DESC LIMIT 50").all();
     return json({items:rows.results || []}, 200, env.ALLOWED_ORIGIN);
   }
-  if (request.method === "GET" && path === "/api/push/public-key") return json({publicKey:env.VAPID_PUBLIC_KEY || null}, 200, env.ALLOWED_ORIGIN);
-  if (request.method === "POST" && path === "/api/push/subscribe") {
-    await auth(request, env, "member");
-    return json({error:"Push delivery is not configured yet. Subscription storage and VAPID signing must be completed before enabling this feature."}, 501, env.ALLOWED_ORIGIN);
-  }
 if (request.method === "GET" && path === "/api/push/public-key") {
     return json({publicKey:isPushConfigured(env) ? env.VAPID_PUBLIC_KEY : null}, 200, env.ALLOWED_ORIGIN);
   }
