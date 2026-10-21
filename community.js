@@ -15,6 +15,8 @@
   let adminToken = "";
   let memberMustChangePassword = false;
   let adminMustChangePassword = false;
+  // Keep one key until a successful response so network retries reuse the same reservation.
+  let pendingUploadKey = "";
   const uploadToken = () => {
     if (memberToken && !memberMustChangePassword) return memberToken;
     if (adminToken && !adminMustChangePassword) return adminToken;
@@ -157,7 +159,9 @@
     form.set("caption", $("uploadCaption").value.trim());
     form.set("media", file);
     try {
-      await api("/api/content", {method:"POST", body:form}, token);
+      if (!pendingUploadKey) pendingUploadKey = crypto.randomUUID();
+      await api("/api/content", {method:"POST", body:form, headers:{"Idempotency-Key":pendingUploadKey}}, token);
+      pendingUploadKey = "";
       $("uploadForm").reset();
       status(targetStatus, "Published. Push notifications are not active yet.");
       await loadPublicContent();
