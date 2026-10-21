@@ -75,11 +75,11 @@ test("Web Push sends encrypted payload with VAPID authorization", async () => {
   const authSecret = fromB64url(pair.subscription.auth);
   const authPrk = await hmac(authSecret,sharedSecret);
   const clientPublic = fromB64url(pair.subscription.p256dh);
-  const keyInfo = concat(encoder.encode("WebPush: info\\0"),clientPublic,serverPublic);
+  const keyInfo = concat(encoder.encode("WebPush: info\0"),clientPublic,serverPublic);
   const inputKeyMaterial = await hkdfExpand(authPrk,keyInfo,32);
   const prk = await hmac(salt,inputKeyMaterial);
-  const cek = await hkdfExpand(prk,encoder.encode("Content-Encoding: aes128gcm\\0"),16);
-  const nonce = await hkdfExpand(prk,encoder.encode("Content-Encoding: nonce\\0"),12);
+  const cek = await hkdfExpand(prk,encoder.encode("Content-Encoding: aes128gcm\0"),16);
+  const nonce = await hkdfExpand(prk,encoder.encode("Content-Encoding: nonce\0"),12);
   const aesKey = await webcrypto.subtle.importKey("raw",cek,{name:"AES-GCM"},false,["decrypt"]);
   const plaintext = new Uint8Array(await webcrypto.subtle.decrypt({name:"AES-GCM",iv:nonce,tagLength:128},aesKey,ciphertext));
   assert.equal(plaintext[plaintext.length-1],2);
