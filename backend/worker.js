@@ -46,7 +46,7 @@ function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Idempotency-Key",
     "Vary": "Origin"
   };
 }
@@ -509,15 +509,80 @@ async function handle(request, env) {
       type === "video" ? ["video/mp4","video/webm","video/ogg"] : [];
     if (!allowed.includes(mime)) fail("File type does not match an allowed image/video type.");
     if (!(await matchesMediaSignature(file, mime))) fail("File contents do not match the selected media type.", 415);
-    const itemId = id();
+    const suppliedKey = request.headers.get("Idempotency-Key");
+    if (suppliedKey && !/^[A-Za-z0-9_-]{16,128}$/.test(suppliedKey)) fail("Invalid upload retry key.");
+    // Legacy clients remain usable, while the current UI sends a stable key
+    // across retries. Only a hash of that key is stored in D1.
+    const clientKey = suppliedKey || id();
+    const keyHash = await digest("content-upload:" + user.id + ":" + clientKey);
+    const fileHash = await digest(await file.arrayBuffer());
+    const payloadHash = await digest(JSON.stringify({
+      type, title, caption, mime, size:file.size, fileHash
+    }));
+    let itemId = id();
+    const reservation = await env.DB.prepare(
+      "INSERT INTO upload_reservations(user_id,key_hash,payload_hash,item_id,state) VALUES(?,?,?,?,'processing') " +
+      "ON CONFLICT(user_id,key_hash) DO NOTHING"
+    ).bind(user.id, keyHash, payloadHash, itemId).run();
+    const ownsReservation = Number(reservation.meta?.changes || 0) === 1;
+    let existing = null;
+    if (!ownsReservation) {
+      existing = await env.DB.prepare(
+        "SELECT user_id,payload_hash,item_id,state,drive_file_id FROM upload_reservations WHERE user_id=? AND key_hash=?"
+      ).bind(user.id, keyHash).first();
+      if (!existing) fail("Upload retry state is unavailable. Please retry.", 503);
+      if (existing.payload_hash !== payloadHash) fail("This upload key was already used for different content.", 409);
+      itemId = existing.item_id;
+      if (existing.state === "completed") return json({ok:true,id:itemId}, 200, env.ALLOWED_ORIGIN);
+      if (existing.state === "retryable") {
+        const claimed = await env.DB.prepare(
+          "UPDATE upload_reservations SET state='processing',updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') " +
+          "WHERE user_id=? AND key_hash=? AND state='retryable'"
+        ).bind(user.id, keyHash).run();
+        if (Number(claimed.meta?.changes || 0) === 1) {
+          existing = null;
+        } else {
+          existing = await env.DB.prepare(
+            "SELECT user_id,payload_hash,item_id,state,drive_file_id FROM upload_reservations WHERE user_id=? AND key_hash=?"
+          ).bind(user.id, keyHash).first();
+        }
+      }
+      if (existing && existing.state !== "retryable") {
+        // The previous attempt may have committed in Drive but lost its reply.
+        // Reconcile by stable Drive appProperties; never upload again merely
+        // because a lookup returns no result (Drive listing is eventually consistent).
+        let recovered;
+        try { recovered = await mediaStore.findByUploadId(itemId); }
+        catch { fail("Upload is being reconciled. Retry shortly.", 503); }
+        if (!recovered) fail("Upload is being reconciled. Retry shortly.", 503);
+        const driveFileId = recovered.id;
+        if (typeof driveFileId !== "string" || !/^[A-Za-z0-9_-]+$/.test(driveFileId) ||
+            recovered.mimeType !== mime || Number(recovered.size) !== file.size) {
+          fail("Upload recovery needs administrator review.", 503);
+        }
+        try {
+          await env.DB.prepare("INSERT INTO content(id,user_id,type,title,caption,media_key,media_mime,media_size) VALUES(?,?,?,?,?,?,?,?)")
+            .bind(itemId, user.id, type, title, caption, driveFileId, mime, file.size).run();
+          await env.DB.prepare(
+            "UPDATE upload_reservations SET state='completed',drive_file_id=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND key_hash=?"
+          ).bind(driveFileId, user.id, keyHash).run();
+        } catch {
+          fail("Upload recovery is waiting for database reconciliation. Retry shortly.", 503);
+        }
+        return json({ok:true,id:itemId}, 200, env.ALLOWED_ORIGIN);
+      }
+    }
     let stored;
     try {
       stored = await mediaStore.put("uploads/" + itemId, file.stream(), {
         size: file.size,
+        appProperties: {archiveUploadId:itemId},
         httpMetadata: {contentType:mime, cacheControl:"private, no-store"}
       });
     } catch {
-      fail("Google Drive upload failed.", 503);
+      // A transport failure is ambiguous: keep the reservation processing so a
+      // retry must search Drive before it is ever allowed to upload again.
+      fail("Google Drive upload failed. Retry this same upload shortly.", 503);
     }
     const driveFileId = stored?.key || stored?.id;
     if (typeof driveFileId !== "string" || !/^[A-Za-z0-9_-]+$/.test(driveFileId)) {
@@ -526,17 +591,23 @@ async function handle(request, env) {
     try {
       await env.DB.prepare("INSERT INTO content(id,user_id,type,title,caption,media_key,media_mime,media_size) VALUES(?,?,?,?,?,?,?,?)")
         .bind(itemId, user.id, type, title, caption, driveFileId, mime, file.size).run();
+      await env.DB.prepare(
+        "UPDATE upload_reservations SET state='completed',drive_file_id=?,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND key_hash=?"
+      ).bind(driveFileId, user.id, keyHash).run();
     } catch (error) {
-      try { await mediaStore.delete(driveFileId); }
+      let cleaned = false;
+      try { await mediaStore.delete(driveFileId); cleaned = true; }
       catch {
-        // Keep this signal structured and sanitized: provider error strings can
-        // contain request details. The Drive ID is required for manual
-        // reconciliation against the dedicated test folder and D1 metadata.
         console.error("Community media orphan cleanup required", {
           event: "drive_orphan_cleanup_failed",
           itemId,
           driveFileId
         });
+      }
+      if (cleaned) {
+        await env.DB.prepare(
+          "UPDATE upload_reservations SET state='retryable',drive_file_id=NULL,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE user_id=? AND key_hash=? AND state='processing'"
+        ).bind(user.id, keyHash).run().catch(() => {});
       }
       throw error;
     }
