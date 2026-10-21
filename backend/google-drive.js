@@ -142,11 +142,14 @@ export function createGoogleDriveMedia(env, fetchImpl = fetch) {
       const metadata = {
         name: String(name).split("/").pop(),
         mimeType,
-        parents: [folderId]
+        parents: [folderId],
+        ...(options.appProperties && typeof options.appProperties === "object"
+          ? {appProperties: options.appProperties}
+          : {})
       };
       const startResponse = await driveRequest(
         env,
-        DRIVE_UPLOAD + "?uploadType=resumable&fields=id,name,mimeType,size",
+        DRIVE_UPLOAD + "?uploadType=resumable&fields=id,name,mimeType,size,appProperties,parents",
         {
           method: "POST",
           headers: {
@@ -222,6 +225,27 @@ export function createGoogleDriveMedia(env, fetchImpl = fetch) {
         httpMetadata: { contentType: result.mimeType || mimeType }
       };
     },
+    async findByUploadId(uploadId) {
+      if (typeof uploadId !== "string" || !/^[0-9a-f-]{36}$/i.test(uploadId)) {
+        providerError("Upload reconciliation key is invalid.", 400);
+      }
+      const escapedFolder = folderId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      const escapedUpload = uploadId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      const q = "'" + escapedFolder + "' in parents and trashed = false and appProperties has { key='archiveUploadId' and value='" + escapedUpload + "' }";
+      const url = DRIVE_API + "?q=" + encodeURIComponent(q) + "&pageSize=10&fields=files(id,name,mimeType,size,appProperties,parents)";
+      const response = await driveRequest(env, url, {}, fetchImpl);
+      const data = await response.json().catch(() => null);
+      if (!data || !Array.isArray(data.files)) providerError("Google Drive reconciliation returned an invalid response.");
+      if (data.files.length > 1) providerError("Multiple Drive files match one upload reservation.");
+      if (!data.files.length) return null;
+      const file = data.files[0];
+      if (!validDriveId(file.id) || !Array.isArray(file.parents) || !file.parents.includes(folderId) ||
+          file.appProperties?.archiveUploadId !== uploadId) {
+        providerError("Google Drive reconciliation result did not match the reserved upload.");
+      }
+      return {id:file.id, name:file.name, mimeType:file.mimeType, size:Number(file.size)};
+    },
+
     async get(fileId) {
       if (!validDriveId(fileId)) return null;
       const response = await driveRequest(
