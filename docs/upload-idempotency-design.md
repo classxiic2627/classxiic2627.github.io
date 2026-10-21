@@ -13,6 +13,36 @@ The feature branch now reserves each upload in D1 using a user-scoped hash of th
 5. Implemented in this branch: a unique D1 reservation elects one upload owner. An in-progress or ambiguous reservation is reconciled and never blindly re-uploaded; a confirmed cleanup returns the reservation to `retryable`. Keep concurrency and real-provider behavior in the acceptance gate.
 6. Make reconciliation observable but sanitized. Do not log OAuth tokens, request bodies, raw idempotency keys, provider response bodies, or user content. Keep the Drive file ID only in structured restricted operational logs where necessary.
 
+
+## Stale reservation operator runbook
+
+A Drive upload request can fail after the provider accepted bytes but before the Worker received the final response. The Worker intentionally leaves that reservation in `processing`; it must not automatically upload again based only on an empty Drive search result. There is currently no automated stale-reservation reset. Use this runbook only against the isolated staging database and dedicated staging Drive folder until it has been exercised and reviewed.
+
+1. **Inventory, read-only first.** Choose a stale-age threshold based on the configured Worker request/runtime limits and observed Drive resumable-session behavior; do not guess a threshold or apply it to production. Query only reservations older than that threshold and include any content row:
+
+   ```sql
+   SELECT r.user_id, r.key_hash, r.item_id, r.state, r.drive_file_id,
+          r.created_at, r.updated_at,
+          c.media_key, c.media_mime, c.media_size
+   FROM upload_reservations AS r
+   LEFT JOIN content AS c
+     ON c.id = r.item_id AND c.user_id = r.user_id
+   WHERE r.state = 'processing' AND r.updated_at < ?
+   ORDER BY r.updated_at;
+   ```
+
+   Bind the selected ISO-8601 UTC cutoff as the parameter. Never log or request the raw browser idempotency key, OAuth tokens, upload body, or user content.
+
+2. **If the content row exists**, do not upload or delete anything. Verify the row's `media_key` identifies exactly one Drive file in the configured staging folder and that its `appProperties.archiveUploadId` equals `item_id`; confirm MIME type and size agree with the content metadata. If those checks pass, repair only the reservation state and file ID in one conditional update scoped by `user_id`, `key_hash`, and current `state='processing'`. If any check fails, leave the reservation unchanged and escalate.
+
+3. **If no content row exists but Drive returns exactly one matching file**, do not manually create content metadata or reset the reservation. Ask the uploader to retry the same form, same file, and same idempotency key. The Worker must validate the current request fingerprint and the Drive app property/folder/MIME/size before linking it. Confirm the retry returns the existing `item_id` and a second Drive file was not created.
+
+4. **If Drive returns multiple matches, a lookup error, or no match**, leave the reservation in `processing`. A failed/empty Drive search is not proof that the upload never committed: listing may be eventually consistent and an upload session may still be in flight. Recheck after the provider's documented consistency/session window and inspect the dedicated folder's audit evidence. Never delete a candidate or reset to `retryable` without authoritative evidence that no matching committed file exists and that the original session cannot still commit. If that evidence is unavailable, keep the row for manual reconciliation rather than risking a duplicate or deleting user media.
+
+5. **After any repair**, verify the reservation is `completed`, the content row points to the same verified Drive ID, a same-payload retry returns the same `item_id`, and a changed-payload retry returns 409. Record only the reservation `item_id`, timestamps, verified outcome, and operator/action reference in the incident note.
+
+This procedure is manual and staging-only. The implementation still needs tests for stale reservation visibility, D1 outages, lookup delays/timeouts, worker restart, and a real lost-response fault injection in approved no-cost staging. Do not merge or deploy production without separate owner approval.
+
 ## Required tests before the gate can be closed
 
 - Same key + same request, repeated after a successful commit returns the same content ID and results in exactly one Drive file.
