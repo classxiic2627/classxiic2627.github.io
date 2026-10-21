@@ -102,7 +102,7 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
           id:"drive-idempotency-123",
           name:metadata.name,
           mimeType:metadata.mimeType,
-          size:8,
+          size:png.length,
           parents:metadata.parents,
           appProperties:metadata.appProperties
         };
