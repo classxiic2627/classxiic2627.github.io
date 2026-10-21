@@ -2095,6 +2095,9 @@ test("announcement push fan-out is bounded and reports delivery results", async 
               }
             };
           },
+          first:async()=>sql.includes("COUNT(*) AS total FROM push_subscriptions")
+            ? {total:subscriptions.length}
+            : null,
           all:async()=>sql.includes("FROM push_subscriptions")
             ? {results:subscriptions.slice(0,40)}
             : {results:[]}
