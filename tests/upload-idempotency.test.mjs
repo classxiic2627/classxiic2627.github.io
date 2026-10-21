@@ -151,6 +151,8 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   let first;
   let lookupTimeoutRetry;
   let noMatchRetry;
+  let wrongParentRetry;
+  let badPropertyRetry;
   let second;
   let third;
   let changedPayload;
@@ -166,6 +168,14 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
     driveFile = null;
     noMatchRetry = await worker.fetch(request(form()),env);
     driveFile = committedFile;
+    const originalParents = driveFile.parents;
+    driveFile.parents = ["another-folder"];
+    wrongParentRetry = await worker.fetch(request(form()),env);
+    driveFile.parents = originalParents;
+    const originalUploadId = driveFile.appProperties.archiveUploadId;
+    driveFile.appProperties.archiveUploadId = "different-upload-id";
+    badPropertyRetry = await worker.fetch(request(form()),env);
+    driveFile.appProperties.archiveUploadId = originalUploadId;
     second = await worker.fetch(request(form()),env);
     third = await worker.fetch(request(form()),env);
     const changed = form();
@@ -180,6 +190,8 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   assert.equal(first.status,503);
   assert.equal(lookupTimeoutRetry.status,503, "a Drive lookup timeout must not trigger a second upload");
   assert.equal(noMatchRetry.status,503, "a temporarily invisible Drive object must not be uploaded again");
+  assert.equal(wrongParentRetry.status,503, "a Drive match from the wrong parent folder must fail closed");
+  assert.equal(badPropertyRetry.status,503, "a Drive match with mismatched upload metadata must fail closed");
   assert.equal(second.status,200);
   assert.equal(third.status,200, "a completed retry returns the same item without another upload");
   assert.equal(changedPayload.status,409, "reusing a key for a changed payload is rejected");
