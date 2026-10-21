@@ -515,7 +515,8 @@ async function handle(request, env) {
     // across retries. Only a hash of that key is stored in D1.
     const clientKey = suppliedKey || id();
     const keyHash = await digest("content-upload:" + user.id + ":" + clientKey);
-    const fileHash = await digest(await file.arrayBuffer());
+    const fileBytes = await file.arrayBuffer();
+    const fileHash = toB64(new Uint8Array(await crypto.subtle.digest("SHA-256", fileBytes)));
     const payloadHash = await digest(JSON.stringify({
       type, title, caption, mime, size:file.size, fileHash
     }));
