@@ -405,12 +405,22 @@
       return;
     }
     try {
+      const registration = await navigator.serviceWorker.register("/sw.js");
+      let subscription = await registration.pushManager.getSubscription();
+      if (subscription && $("subscribeButton").textContent === "Disable notifications on this device") {
+        await api("/api/push/subscribe", {
+          method:"DELETE",
+          body:JSON.stringify({endpoint:subscription.endpoint})
+        }, token);
+        await subscription.unsubscribe();
+        status("pushStatus", "Notifications disabled on this device.");
+        $("subscribeButton").textContent = "Enable notifications on this device";
+        return;
+      }
       const keyData = await api("/api/push/public-key");
       if (!keyData.publicKey) throw new Error("Push notifications are not configured on the server yet.");
       const permission = await Notification.requestPermission();
       if (permission !== "granted") throw new Error("Notification permission was not granted.");
-      const registration = await navigator.serviceWorker.register("/sw.js");
-      let subscription = await registration.pushManager.getSubscription();
       if (!subscription) subscription = await registration.pushManager.subscribe({
         userVisibleOnly:true,
         applicationServerKey:decodeApplicationServerKey(keyData.publicKey)
@@ -420,10 +430,16 @@
         body:JSON.stringify(subscription.toJSON())
       }, token);
       status("pushStatus", "Notifications enabled on this device for class announcements.");
-      $("subscribeButton").textContent = "Notifications enabled";
+      $("subscribeButton").textContent = "Disable notifications on this device";
     } catch (error) {
       status("pushStatus", error.message);
     }
   });
+  if ("serviceWorker" in navigator && "PushManager" in window) {
+    navigator.serviceWorker.getRegistration().then(async registration => {
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription) $("subscribeButton").textContent = "Disable notifications on this device";
+    }).catch(() => {});
+  }
   loadPublicContent();
 })();
