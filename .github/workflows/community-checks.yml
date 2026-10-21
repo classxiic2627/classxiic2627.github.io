@@ -151,8 +151,8 @@ jobs:
           connection.executescript(schema)
 
           migration_connection = sqlite3.connect(":memory:")
-          migration = Path("backend/migrations/0001_initial.sql").read_text(encoding="utf-8")
-          migration_connection.executescript(migration)
+          for migration_path in sorted(Path("backend/migrations").glob("*.sql")):
+              migration_connection.executescript(migration_path.read_text(encoding="utf-8"))
 
           def schema_objects(db):
               return list(db.execute(
@@ -181,7 +181,7 @@ jobs:
           if blocked.rowcount != 0:
               raise SystemExit("Atomic auth reservation admitted an attempt at the configured threshold.")
 
-          expected = {"users", "sessions", "content", "announcements", "push_subscriptions", "auth_attempts"}
+          expected = {"users", "sessions", "content", "announcements", "push_subscriptions", "auth_attempts", "upload_reservations"}
           actual = {
               row[0] for row in connection.execute(
                   "SELECT name FROM sqlite_master WHERE type='table'"
@@ -225,7 +225,7 @@ jobs:
           else:
               raise SystemExit("Email uniqueness is not case-insensitive.")
 
-          print(f"Schema and initial migration match: {len(expected)} expected tables and core constraints validated.")
+          print(f"Schema and all ordered migrations match: {len(expected)} expected tables and core constraints validated.")
 
           wrangler_template = Path("wrangler.example.toml").read_text(encoding="utf-8")
           required_config = [
