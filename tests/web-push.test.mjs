@@ -4,6 +4,27 @@ import { webcrypto } from "node:crypto";
 import { isPushConfigured, sendWebPush } from "../backend/web-push.js";
 
 const b64url = bytes => Buffer.from(bytes).toString("base64url");
+const fromB64url = value => Buffer.from(value,"base64url");
+const encoder = new TextEncoder();
+const concat = (...parts) => {
+  const result = new Uint8Array(parts.reduce((total,part)=>total+part.length,0));
+  let offset=0;
+  for (const part of parts) { result.set(part,offset); offset+=part.length; }
+  return result;
+};
+async function hmac(keyBytes,data) {
+  const key=await webcrypto.subtle.importKey("raw",keyBytes,{name:"HMAC",hash:"SHA-256"},false,["sign"]);
+  return new Uint8Array(await webcrypto.subtle.sign("HMAC",key,data));
+}
+async function hkdfExpand(prk,info,length) {
+  const blocks=[];
+  let previous=new Uint8Array(),total=0;
+  for(let counter=1;total<length;counter++) {
+    previous=await hmac(prk,concat(previous,info,Uint8Array.of(counter)));
+    blocks.push(previous); total+=previous.length;
+  }
+  return concat(...blocks).slice(0,length);
+}
 
 async function keys() {
   const vapid = await webcrypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);
@@ -13,7 +34,8 @@ async function keys() {
   const clientRaw = new Uint8Array(await webcrypto.subtle.exportKey("raw",client.publicKey));
   return {
     env:{VAPID_PUBLIC_KEY:b64url(publicRaw),VAPID_PRIVATE_KEY:privateJwk.d,VAPID_SUBJECT:"mailto:admin@classxiic.example"},
-    subscription:{endpoint:"https://fcm.googleapis.com/fcm/send/test-endpoint",p256dh:b64url(clientRaw),auth:b64url(webcrypto.getRandomValues(new Uint8Array(16)))}
+    subscription:{endpoint:"https://fcm.googleapis.com/fcm/send/test-endpoint",p256dh:b64url(clientRaw),auth:b64url(webcrypto.getRandomValues(new Uint8Array(16)))},
+    clientPrivateKey:client.privateKey
   };
 }
 
@@ -39,6 +61,31 @@ test("Web Push sends encrypted payload with VAPID authorization", async () => {
   assert.equal(request.init.headers["Content-Type"],"application/octet-stream");
   assert.ok(request.init.body instanceof Uint8Array);
   assert.ok(request.init.body.length > 100);
+
+  // Decrypt the captured aes128gcm record as a browser push client would. This
+  // catches key-derivation/header/layout mistakes that a length-only test misses.
+  const record = request.init.body;
+  const salt = record.slice(0,16);
+  const keyIdLength = record[20];
+  const serverPublic = record.slice(21,21+keyIdLength);
+  const ciphertext = record.slice(21+keyIdLength);
+  assert.equal(keyIdLength,65);
+  const serverKey = await webcrypto.subtle.importKey("raw",serverPublic,{name:"ECDH",namedCurve:"P-256"},false,[]);
+  const sharedSecret = new Uint8Array(await webcrypto.subtle.deriveBits({name:"ECDH",public:serverKey},pair.clientPrivateKey,256));
+  const authSecret = fromB64url(pair.subscription.auth);
+  const authPrk = await hmac(authSecret,sharedSecret);
+  const clientPublic = fromB64url(pair.subscription.p256dh);
+  const keyInfo = concat(encoder.encode("WebPush: info\\0"),clientPublic,serverPublic);
+  const inputKeyMaterial = await hkdfExpand(authPrk,keyInfo,32);
+  const prk = await hmac(salt,inputKeyMaterial);
+  const cek = await hkdfExpand(prk,encoder.encode("Content-Encoding: aes128gcm\\0"),16);
+  const nonce = await hkdfExpand(prk,encoder.encode("Content-Encoding: nonce\\0"),12);
+  const aesKey = await webcrypto.subtle.importKey("raw",cek,{name:"AES-GCM"},false,["decrypt"]);
+  const plaintext = new Uint8Array(await webcrypto.subtle.decrypt({name:"AES-GCM",iv:nonce,tagLength:128},aesKey,ciphertext));
+  assert.equal(plaintext[plaintext.length-1],2);
+  assert.deepEqual(JSON.parse(new TextDecoder().decode(plaintext.slice(0,-1))),{
+    title:"Class update",body:"New announcement",url:"/community.html"
+  });
 });
 
 test("Web Push rejects non-HTTPS endpoints before network requests", async () => {
