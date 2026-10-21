@@ -374,9 +374,11 @@
       const delivery = published.notifications;
       let message = "Announcement published.";
       if (!delivery || !delivery.configured) message += " Push delivery is not configured on the server.";
+      else if (!delivery.total && delivery.failed) message += " The announcement is published, but push subscription lookup failed.";
       else if (!delivery.total) message += " No registered push subscriptions yet.";
       else {
-        message += " Provider accepted: " + delivery.sent + "; expired subscriptions removed: " + (delivery.expired || 0) + "; failed attempts: " + delivery.failed + ".";
+        message += " Provider accepted: " + delivery.sent + "; expired endpoints: " + (delivery.expired || 0) + "; failed attempts: " + delivery.failed + ".";
+        if (delivery.cleanupFailed) message += " Expired-endpoint cleanup failed; an administrator should review it.";
         if (delivery.skipped) message += " " + delivery.skipped + " of " + delivery.total + " registered devices were skipped by the per-announcement safety cap of 40.";
         message += " Provider acceptance does not guarantee a device displayed the notification.";
       }
