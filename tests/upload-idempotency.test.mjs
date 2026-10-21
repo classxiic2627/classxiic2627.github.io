@@ -38,6 +38,7 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   let uploadStarts = 0;
   let uploadPuts = 0;
   let driveFile = null;
+  let driveSearchFails = false;
   const env = {
     ALLOWED_ORIGIN: origin,
     GOOGLE_CLIENT_ID: "idempotency-test-client.apps.googleusercontent.com",
@@ -135,6 +136,7 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
         throw new Error("simulated lost final response");
       }
       if (target.startsWith("https://www.googleapis.com/drive/v3/files?")) {
+        if (driveSearchFails) throw new Error("simulated Drive lookup timeout");
         assert.match(decodeURIComponent(target), /appProperties has/);
         return new Response(JSON.stringify({files:driveFile ? [driveFile] : []}),{
           status:200,headers:{"Content-Type":"application/json"}
@@ -147,6 +149,7 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   const originalFetch = globalThis.fetch;
   globalThis.fetch = env.__googleFetch;
   let first;
+  let lookupTimeoutRetry;
   let noMatchRetry;
   let second;
   let third;
@@ -154,6 +157,9 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   let changedBytesPayload;
   try {
     first = await worker.fetch(request(form()),env);
+    driveSearchFails = true;
+    lookupTimeoutRetry = await worker.fetch(request(form()),env);
+    driveSearchFails = false;
     // Drive listing can lag behind a successful upload. A no-match result must
     // remain fail-closed; it must never trigger a second Drive upload.
     const committedFile = driveFile;
@@ -172,6 +178,7 @@ test("retry reconciles a Drive commit whose final response was lost without uplo
   }
 
   assert.equal(first.status,503);
+  assert.equal(lookupTimeoutRetry.status,503, "a Drive lookup timeout must not trigger a second upload");
   assert.equal(noMatchRetry.status,503, "a temporarily invisible Drive object must not be uploaded again");
   assert.equal(second.status,200);
   assert.equal(third.status,200, "a completed retry returns the same item without another upload");
