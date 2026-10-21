@@ -148,7 +148,7 @@ try {
       throw "Public staging media read failed (HTTP $([int]$mediaResponse.StatusCode))."
     }
     $downloadedBytes = $mediaResponse.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
-    if (-not [System.Linq.Enumerable]::SequenceEqual([byte[]]$pngBytes, [byte[]]$downloadedBytes)) {
+    if ([Convert]::ToBase64String($pngBytes) -cne [Convert]::ToBase64String($downloadedBytes)) {
       throw "Public staging media bytes did not match the uploaded test file."
     }
 
