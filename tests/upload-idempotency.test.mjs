@@ -68,6 +68,36 @@ test("upload fingerprint hashes bounded chunks without allocating the whole file
   assert.equal(chunkReads, 9, "three 1 MiB-or-smaller chunks per file are read");
 });
 
+test("chunked upload fingerprint matches pinned vectors and rejects malformed slices", async () => {
+  const abc = Uint8Array.from([0x61, 0x62, 0x63]);
+  const abcFile = {
+    size: abc.length,
+    slice(start, end) {
+      return {arrayBuffer: async () => abc.slice(start, end).buffer};
+    }
+  };
+  assert.equal(
+    await fingerprintFile(abcFile),
+    "MNxa4NErrREzYiHGDiuPZvru/NY/N9lwdAbWFzCBklM=",
+    "the versioned fingerprint matches the pinned abc vector"
+  );
+
+  const emptyFile = {size:0, slice(){throw new Error("empty files must not request a slice");}};
+  assert.equal(
+    await fingerprintFile(emptyFile),
+    "wSF3IelHJDVRXVKtOnYn0XRROBPme2v5YmhCDhSUbxU=",
+    "the empty-file fingerprint is deterministic"
+  );
+
+  const malformedFile = {
+    size: 3,
+    slice() {
+      return {arrayBuffer: async () => Uint8Array.from([1, 2]).buffer};
+    }
+  };
+  await assert.rejects(fingerprintFile(malformedFile), /File chunk length did not match/);
+});
+
 test("retry reconciles a Drive commit whose final response was lost without uploading twice", async () => {
   const reservation = {user_id:7,payload_hash:"",item_id:"",state:"",drive_file_id:null};
   const contentRows = [];
