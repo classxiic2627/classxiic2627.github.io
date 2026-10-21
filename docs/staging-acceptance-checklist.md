@@ -11,6 +11,14 @@ This checklist is for the first isolated, no-cost staging run of the existing Co
 - [ ] Set the exact approved staging site origin in `ALLOWED_ORIGIN`; do not guess the Worker URL or point the public site at localhost.
 - [ ] Confirm the frontend is still disconnected from any Worker until staging acceptance is complete.
 
+## Configuration notes verified against the current Worker
+
+- The deploy template is the repository-root `wrangler.example.toml` (not a `backend/wrangler.toml.example` file). Copy it to the ignored local `wrangler.toml`, fill only approved staging values, and keep that filled file out of Git.
+- The template binds D1 as `DB`, points migrations at `backend/migrations`, sets `ALLOWED_ORIGIN`, `GOOGLE_CLIENT_ID`, and `GOOGLE_DRIVE_FOLDER_ID`, and declares the daily Cron Trigger. Store `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, and the temporary `SETUP_SECRET` as Worker secrets, never as committed vars.
+- Apply `backend/migrations/0001_initial.sql` only to the newly created, verified-empty staging D1. Do not use it to modify an existing database; the migration is a baseline, not a reconciliation migration.
+- First-admin initialization is a trusted local/CLI operation requiring `X-Setup-Secret`. Never call it from browser code or expose the secret through frontend state or CORS. Rotate/remove `SETUP_SECRET` immediately after successful initialization.
+- The Worker's `scheduled()` handler currently deletes expired sessions and old authentication-attempt records only. **Cron execution does not discover or reconcile orphaned Drive files.** Keep Drive/D1 orphan reconciliation as a separate, test-folder-scoped procedure until an actual reconciliation job is implemented and verified.
+
 ## Functional acceptance (record evidence, not just a checkbox)
 
 - [ ] Public liveness health check succeeds; authenticated admin dependency health verifies D1 and Drive readiness.
