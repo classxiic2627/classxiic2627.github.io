@@ -2367,3 +2367,48 @@ test("push subscription can be refreshed by its owning account", async () => {
   assert.equal(insertValues[1],memberSession.id);
   assert.deepEqual(await response.json(),{ok:true});
 });
+
+
+test("announcement subscription lookup failure is not misreported as a failed provider send", async () => {
+  const vapid = await webcrypto.subtle.generateKey({name:"ECDSA",namedCurve:"P-256"},true,["sign","verify"]);
+  const publicRaw = new Uint8Array(await webcrypto.subtle.exportKey("raw",vapid.publicKey));
+  const privateJwk = await webcrypto.subtle.exportKey("jwk",vapid.privateKey);
+  const lookupEnv = {
+    ...env,
+    VAPID_PUBLIC_KEY:Buffer.from(publicRaw).toString("base64url"),
+    VAPID_PRIVATE_KEY:privateJwk.d,
+    VAPID_SUBJECT:"mailto:admin@classxiic.example",
+    DB:{
+      prepare(sql) {
+        return {
+          bind() {
+            return {
+              first:async()=>adminSession,
+              run:async()=>({success:true,meta:{changes:1}})
+            };
+          },
+          first:async()=>{
+            if (sql.includes("COUNT(*) AS total FROM push_subscriptions")) return {total:3};
+            return null;
+          },
+          all:async()=>{
+            if (sql.includes("FROM push_subscriptions")) throw new Error("D1 subscription listing unavailable");
+            return {results:[]};
+          }
+        };
+      }
+    }
+  };
+  const response=await worker.fetch(new Request("https://api.example.test/api/admin/announcements",{
+    method:"POST",
+    headers:{Origin:origin,Authorization:"Bearer "+"m".repeat(64),"Content-Type":"application/json"},
+    body:JSON.stringify({title:"Class update",body:"New announcement"})
+  }),lookupEnv);
+  assert.equal(response.status,201,"the already-persisted announcement remains published");
+  const result=await response.json();
+  assert.equal(result.notifications.total,3);
+  assert.equal(result.notifications.lookupFailed,true);
+  assert.equal(result.notifications.sent,0);
+  assert.equal(result.notifications.failed,0,"a D1 lookup failure is not a failed provider send");
+  assert.equal(result.notifications.skipped,3,"all known recipients must be reported as unattempted");
+});
