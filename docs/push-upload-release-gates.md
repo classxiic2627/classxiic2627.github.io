@@ -27,7 +27,7 @@ The new `backend/upload-fingerprint.js` hashes fixed 1 MiB slices and then hashe
 
 ## Upload: remaining acceptance gates
 
-- [ ] **Near-limit memory:** `digestFile(file)` uses `file.arrayBuffer()` plus WebCrypto digest, which materializes a full-file buffer for a 50 MiB upload. The multipart parser also holds the parsed File. Measure peak memory in an actual isolated Worker near the approved 50 MiB limit under the 128 MB isolate ceiling, or replace full-buffer hashing with a reviewed incremental SHA-256 implementation and known-vector/parity tests.
+- [ ] **Near-limit memory:** the extra whole-file hashing buffer has been removed: `fingerprintFile(file)` processes 1 MiB slices and hashes their digests. The multipart parser still materializes the parsed File, and this custom versioned chunk-digest construction is not the standard SHA-256(file). Measure peak memory in an actual isolated Worker near the approved 50 MiB limit under the 128 MB isolate ceiling. Add a pinned known-vector test plus empty-file and malformed-slice tests before considering the fingerprint implementation fully reviewed.
 - [ ] **Real Drive ambiguity test:** In isolated staging, inject a lost final upload response after Drive accepts the file; prove the same-key retry links exactly one object, changed payload returns 409, and temporary listing inconsistency does not create a second upload.
 - [ ] Exercise D1 outage/restart and compensating-delete failure paths against isolated staging. Preserve fail-closed reconciliation; an empty/unavailable search is not proof that the upload never committed.
 
