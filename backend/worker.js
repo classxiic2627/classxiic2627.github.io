@@ -579,7 +579,7 @@ async function handle(request, env) {
     const announcement = cleanText(body.body, 3000, "Announcement", true);
     const announcementId = id();
     await env.DB.prepare("INSERT INTO announcements(id,user_id,title,body) VALUES(?,?,?,?)").bind(announcementId,user.id,title,announcement).run();
-    let notifications = {configured:isPushConfigured(env),sent:0,failed:0};
+    let notifications = {configured:isPushConfigured(env),sent:0,failed:0,expired:0};
     if (notifications.configured) {
       try {
         const subscriptions = await env.DB.prepare("SELECT ps.endpoint,ps.p256dh,ps.auth FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.disabled=0").all();
@@ -599,6 +599,7 @@ async function handle(request, env) {
         }));
         notifications.sent = outcomes.filter(result => result.status === "fulfilled" && result.value === "sent").length;
         notifications.failed = outcomes.filter(result => result.status === "rejected").length;
+        notifications.expired = outcomes.filter(result => result.status === "fulfilled" && result.value === "expired").length;
       } catch {
         // The announcement is already committed; a notification outage must not
         // make the admin think publication failed and encourage duplicate posts.
