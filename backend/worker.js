@@ -721,6 +721,9 @@ async function handle(request, env) {
       try {
         const countRow = await env.DB.prepare("SELECT COUNT(*) AS total FROM push_subscriptions ps JOIN users u ON u.id=ps.user_id WHERE u.disabled=0").first();
         notifications.total = Math.max(0,Number(countRow?.total || 0));
+        // Until a bounded recipient list is successfully loaded, count every
+        // registered device as skipped so a lookup failure cannot look complete.
+        notifications.skipped = notifications.total;
         // Hard cap one announcement at 40 provider requests to stay below
         // common free-tier subrequest limits even when some endpoints expire.
         // Random selection avoids permanently excluding the same devices when
