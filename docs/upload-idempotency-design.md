@@ -16,7 +16,7 @@ The feature branch reserves each upload in D1 using a user-scoped hash of the cl
 
 ## Stale reservation operator runbook
 
-A Drive upload request can fail after the provider accepted bytes but before the Worker received the final response. The Worker transitions the completed request to `reconciliation_required`; while a reservation is still `processing`, same-key requests return 503 without searching Drive. It must not automatically upload again based only on an empty Drive search result. There is currently no automated stale-reservation reset. Use this runbook only against the isolated staging database and dedicated staging Drive folder until it has been exercised and reviewed.
+A Drive upload request can fail after the provider accepted bytes but before the Worker received the final response. The Worker transitions the completed request to `reconciliation_required`; while a reservation is still `processing`, same-key requests return 503 without searching Drive. It must not automatically upload again based only on an empty Drive search result. The Worker marks an ambiguous Drive result as `reconciliation_required` and only one retry may claim that state for reconciliation. There is currently no automated stale-reservation reset. If the D1 state update itself fails, the row can remain `processing` and requires manual investigation. Use this runbook only against the isolated staging database and dedicated staging Drive folder until it has been exercised and reviewed.
 
 1. **Inventory, read-only first.** Choose a stale-age threshold based on the configured Worker request/runtime limits and observed Drive resumable-session behavior; do not guess a threshold or apply it to production. Query only reservations older than that threshold and include any content row:
 
@@ -27,7 +27,7 @@ A Drive upload request can fail after the provider accepted bytes but before the
    FROM upload_reservations AS r
    LEFT JOIN content AS c
      ON c.id = r.item_id AND c.user_id = r.user_id
-   WHERE r.state = 'processing' AND r.updated_at < ?
+   WHERE r.state IN ('processing', 'reconciliation_required') AND r.updated_at < ?
    ORDER BY r.updated_at;
    ```
 
