@@ -269,6 +269,13 @@ function escapeHTML(value) {
 
 const classViews = [
   {
+    type: "photo",
+    title: "Happy Children's Day!",
+    text: "14/11/2026",
+    author: "Uttam",
+    image: "vimages/uttam3.png"
+  },
+  {
     type: "memory",
     title: "Candid!",
     text: "Our memories of during the farewell dance practice :D",
